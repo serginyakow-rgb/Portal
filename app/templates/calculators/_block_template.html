@@ -1,0 +1,84 @@
+{# ШАБЛОН НОВОГО БЛОКА РАЗДЕЛА «КАЛЬКУЛЯТОРЫ» — файл только для копирования.
+   Роута у него нет: скопируй в app/templates/calculators/<slug>.html, замени
+   <slug> и подписи, добавь карточку в CALCULATORS (service.py) и маршруты в
+   routes.py. Полные правила — clinerules/02-calculators.md.
+   Скрин-подсказки:
+     - подписи полей: 12px --navy, единица измерения через запятую;
+     - суммы: type="text" + data-money (+ data-money-decimals="2"), не type="number";
+     - кнопки: действие (primary) + «К списку» (ghost) последней;
+     - показатели: .label/.value, итог — .value--total, начальные 0&nbsp;₽. #}
+{% extends "base.html" %}
+
+{% block title %}Короткое название · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Калькулятор «НАЗВАНИЕ БЛОКА»: слева поля ввода, справа показатели.
+   Расчёт идёт в браузере (static/js/<slug>.js), введённые значения хранятся
+   в localStorage. #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">НАЗВАНИЕ БЛОКА ДОСЛОВНО КАК В КАРТОЧКЕ</h1>
+    <span class="panel__hint">Одна фраза о том, что считаем</span>
+  </div>
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
+         fill="none" stroke="currentColor" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <div class="calc">
+    <form class="calc__form" id="<slug>-form" autocomplete="off">
+      <div class="field">
+        <label for="<slug>-amount">Сумма, ₽</label>
+        <input id="<slug>-amount" name="amount" type="text" inputmode="decimal"
+               data-money data-money-decimals="2" placeholder="Например: 1 500 000">
+      </div>
+
+      <div class="field">
+        <label for="<slug>-share">Доля</label>
+        <input id="<slug>-share" name="share" type="text" inputmode="numeric"
+               placeholder="Например: 1/2">
+        <p class="status status--warn" id="<slug>-share-error" aria-live="polite"></p>
+      </div>
+
+      <div class="field">
+        <label for="<slug>-kind">Параметр из справочника</label>
+        <select id="<slug>-kind" name="kind">
+          <option value="a">Вариант А</option>
+          <option value="b">Вариант Б</option>
+        </select>
+      </div>
+
+      <div class="calc__row">
+        <button class="btn btn--primary" id="<slug>-reset" type="button">Очистить</button>
+        <a class="btn btn--ghost" href="/calculators/"
+           title="Вернуться к списку калькуляторов">К списку</a>
+      </div>
+    </form>
+
+    <aside class="calc__out">
+      <span class="label">Показатель</span>
+      <span class="value" id="<slug>-out-main">0&nbsp;₽</span>
+
+      <span class="label">Итого</span>
+      <span class="value value--total" id="<slug>-out-total">0&nbsp;₽</span>
+
+      <span class="note">Услуги правового и технического характера и льготы
+        не учтены — уточнить у нотариуса</span>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/<slug>.js') }}"></script>
+{% endblock %}

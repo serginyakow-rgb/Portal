@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Пользователи · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Раздел «Пользователи»: две панели каркаса — список сотрудников и форма (добавление или правка) #}
+<section class="panel">
+  {# Сообщения о результате действий нотариуса: добавление, правка, удаление, ошибка #}
+  {% if created %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Пользователь добавлен: вход в портал выполняется по имени и паролю.
+  </p>
+  {% endif %}
+
+  {% if updated %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Изменения сохранены: имя и пароль сотрудника обновлены.
+  </p>
+  {% endif %}
+
+  {% if deleted %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Сотрудник удалён: вход в портал под этой учётной записью больше невозможен.
+  </p>
+  {% endif %}
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <div class="panel__head">
+    <h2 class="panel__title">Список сотрудников</h2>
+    <span class="panel__hint">Всего: {{ users|length }}</span>
+  </div>
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Имя (логин)</th>
+          <th>Роль</th>
+          <th>Пароль</th>
+          <th>Создан</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in users %}
+        <tr>
+          <td>{{ item.full_name }}{% if item.id == user.id %} (это вы){% endif %}</td>
+          <td>{{ role_labels.get(item.role, item.role) }}</td>
+          <td class="mono">{{ item.password_plain or '—' }}</td>
+          <td class="mono">{{ item.created_at.strftime('%d.%m.%Y') }}</td>
+          <td>
+            {% if edit_user and edit_user.id == item.id %}
+            <span class="panel__hint">Редактируется — форма в панели ниже</span>
+            {% else %}
+            <a class="btn btn--ghost" href="/auth/users?edit={{ item.id }}#edit-panel">Изменить</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel" id="edit-panel">
+  {# Панель формы работает в двух режимах: добавление и правка сотрудника #}
+  <div class="panel__head">
+    {% if edit_user %}
+    <h1 class="panel__title">Изменение сотрудника: {{ edit_user.full_name }}</h1>
+    <span class="panel__hint">Пароль виден нотариусу портала</span>
+    {% else %}
+    <h1 class="panel__title">Новый сотрудник</h1>
+    <span class="panel__hint">Доступно нотариусу портала</span>
+    {% endif %}
+  </div>
+
+  {% if edit_user %}
+  {# Форма правки выбранного сотрудника: имя и пароль #}
+  <form class="calc__form" method="post" action="/auth/users/{{ edit_user.id }}/update">
+    <div class="field">
+      <label for="edit_full_name">Имя (ФИО)</label>
+      <input id="edit_full_name" name="full_name" type="text" value="{{ edit_user.full_name }}" required
+             autofocus autocomplete="off" placeholder="Иванов Иван Иванович">
+    </div>
+
+    <div class="field">
+      <label for="edit_password">Пароль</label>
+      <input id="edit_password" name="password" type="text" value="{{ edit_user.password_plain or '' }}"
+             autocomplete="off" placeholder="Оставьте без изменений, если пароль менять не нужно">
+    </div>
+
+    <div class="field">
+      <label for="edit_role">Роль</label>
+      <input id="edit_role" name="role_view" type="text" value="{{ role_labels.get(edit_user.role, edit_user.role) }}"
+             disabled>
+    </div>
+
+    {% if not edit_user.password_plain %}
+    <p class="status status--warn">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" x2="12" y1="8" y2="12"/>
+        <line x1="12" x2="12.01" y1="16" y2="16"/>
+      </svg>
+      Пароль задан до появления просмотра — введите новый, чтобы увидеть его в списке.
+    </p>
+    {% endif %}
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+      <a class="btn btn--ghost" href="/auth/users">Отмена</a>
+      <span class="panel__hint">Имя — только русские буквы, пробел и дефис; пароль — от 6 символов</span>
+    </div>
+  </form>
+
+  {% if edit_user.id == user.id %}
+  <p class="panel__hint">Собственную учётную запись удалить нельзя.</p>
+  {% else %}
+  <form class="calc__form" method="post" action="/auth/users/{{ edit_user.id }}/delete">
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="submit">Удалить сотрудника</button>
+      <span class="panel__hint">Учётная запись удаляется без возможности восстановления</span>
+    </div>
+  </form>
+  {% endif %}
+  {% else %}
+  <form class="calc__form" method="post" action="/auth/register">
+    <div class="field">
+      <label for="full_name">Имя (ФИО)</label>
+      <input id="full_name" name="full_name" type="text" required autocomplete="off"
+             placeholder="Иванов Иван Иванович">
+    </div>
+
+    <div class="field">
+      <label for="password">Пароль</label>
+      <input id="password" name="password" type="password" required autocomplete="new-password">
+    </div>
+
+    <div class="field">
+      <label for="role">Роль</label>
+      <select id="role" name="role">
+        <option value="user">{{ role_labels.get('user', 'Сотрудник') }}</option>
+        <option value="admin">{{ role_labels.get('admin', 'Нотариус') }}</option>
+      </select>
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Добавить сотрудника</button>
+      <span class="panel__hint">Имя — только русские буквы, пробел и дефис</span>
+    </div>
+  </form>
+  {% endif %}
+</section>
+
+{% endblock %}

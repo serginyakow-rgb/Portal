@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Государственная пошлина · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Калькулятор госпошлины: слева форма, справа результат (расчёт на сервере, POST).
+   Сумма в поле ввода показывается с разделителями разрядов (js/money-input.js). #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Государственная пошлина</h1>
+    <span class="panel__hint">Тариф за удостоверение сделки</span>
+  </div>
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <div class="calc">
+    <form class="calc__form" method="post" action="/calculators/gosposhlina">
+      <div class="field">
+        <label for="amount">Сумма договора, ₽</label>
+        <input id="amount" name="amount" type="text" inputmode="decimal" value="{{ amount }}"
+               autocomplete="off" required data-money placeholder="Например: 1 500 000">
+      </div>
+
+      <div class="field">
+        <label for="deal_type">Тип сделки</label>
+        <select id="deal_type" name="deal_type">
+          {% for value, label in deal_types.items() %}
+          <option value="{{ value }}"{% if value == deal_type %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="payer_type">Категория плательщика</label>
+        <select id="payer_type" name="payer_type">
+          {% for value, label in payer_types.items() %}
+          <option value="{{ value }}"{% if value == payer_type %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit">Рассчитать</button>
+        <a class="btn btn--ghost" href="/calculators/"
+           title="Вернуться к списку калькуляторов">К списку</a>
+      </div>
+    </form>
+
+    <aside class="calc__out">
+      <span class="label">Госпошлина</span>
+
+      {% if result %}
+      <span class="value">{{ result_text }} ₽</span>
+      <span class="note">{{ result.detail }}</span>
+      {% else %}
+      <span class="value">—</span>
+      <span class="note">Укажите сумму договора и нажмите «Рассчитать»</span>
+      {% endif %}
+
+      <span class="note">Услуги правового и технического характера и льготы не учтены — уточнить у нотариуса</span>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+{% endblock %}

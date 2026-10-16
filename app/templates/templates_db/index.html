@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}База данных · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Поиск и фильтры: условия сохраняются в адресе страницы (?q, ?tag, ?section_id).
+   Поиск запускают кнопка «Найти», клавиша Enter в поле и выход из полей поиска по Tab (js/templates_db.js) #}
+<section class="panel panel--db-search">
+  <div class="panel__head">
+    <h1 class="panel__title">База данных</h1>
+    <span class="panel__hint">Общая база текстов для всех сотрудников</span>
+  </div>
+
+  {% if saved %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Изменения сохранены.
+  </p>
+  {% endif %}
+
+  {% if deleted %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Удалено.
+  </p>
+  {% endif %}
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <form class="calc__form" method="get" action="/templates-db/search">
+    {# Поля и кнопки одной строкой: .cards — поиск, узкое поле тегов и кнопки по содержимому #}
+    <div class="cards">
+      <div class="field">
+        <label for="q">Поиск в заголовке и в содержании</label>
+        <input id="q" name="q" type="text" value="{{ q }}" autocomplete="off" data-search-field
+               placeholder="Например: доверенность на автомобиль">
+      </div>
+
+      <div class="field">
+        <label for="tag">Поиск по тегам</label>
+        <input id="tag" name="tag" type="text" value="{{ tag }}" autocomplete="off" data-search-field
+               placeholder="Например: доверенность">
+      </div>
+
+      <div class="field">
+        {# пустая метка выравнивает кнопки по строке полей #}
+        <label aria-hidden="true">&nbsp;</label>
+
+        <div class="calc__row">
+          <button class="btn btn--primary" type="submit">Найти</button>
+          <a class="btn btn--ghost" href="/templates-db/" title="Сбросить поиск и фильтры">Сброс</a>
+          <a class="btn btn--primary"
+             href="/templates-db/blocks/new{% if section_id %}?section_id={{ section_id }}{% endif %}"
+             title="Добавить новую карточку">Добавить</a>
+
+          <a class="btn btn--ghost" href="/templates-db/sections/new" title="Добавить раздел">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14"/>
+              <path d="M5 12h14"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    {% if section_id %}<input type="hidden" name="section_id" value="{{ section_id }}">{% endif %}
+  </form>
+</section>
+
+<div class="layout">
+  {# Левая колонка: разделы заготовок #}
+  <aside>
+    <section class="panel">
+
+      {% for section in sections %}
+      <article class="card" data-section-edit="/templates-db/sections/{{ section.id }}/edit">
+        {% if section.sort_order %}
+        <div class="card__top">
+          <span class="card__meta">Порядок: {{ section.sort_order }}</span>
+        </div>
+        {% endif %}
+
+        <div class="card__top">
+          <a class="status {% if active_section and active_section.id == section.id %}status--done{% else %}status--progress{% endif %}"
+             href="/templates-db/search?section_id={{ section.id }}"
+             title="Показать все карточки раздела">{{ section.name }}</a>
+          <span class="card__meta">{{ section.blocks_count }}</span>
+        </div>
+
+        {% if section.description %}
+        <p class="card__meta">{{ section.description }}</p>
+        {% endif %}
+      </article>
+      {% else %}
+      <p class="panel__hint">Разделов пока нет — создайте первый кнопкой выше.</p>
+      {% endfor %}
+    </section>
+  </aside>
+
+  {# Правая колонка: заготовки выбранного раздела или результаты поиска #}
+  <div>
+    <section class="panel">
+      <div class="panel__head">
+        <h2 class="panel__title">
+          {% if active_section %}Раздел: {{ active_section.name }}
+          {% elif tag or q %}Результаты поиска
+          {% else %}Все карточки{% endif %}
+        </h2>
+        <span class="panel__hint">Найдено: {{ blocks|length }}</span>
+      </div>
+
+      {% if blocks %}
+      <div class="cards">
+        {% for block in blocks %}
+        <article class="card">
+          <div class="card__title">{{ block.title }}</div>
+          <p class="card__meta">{{ block.body_preview }}</p>
+
+          <p class="card__meta">
+            {% if block.tags %}
+            {% for tag_name in block.tags %}
+            <a class="status status--progress"
+               href="/templates-db/search?tag={{ tag_name|urlencode }}{% if section_id %}&amp;section_id={{ section_id }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}"
+               title="Показать карточки с этим тегом">{{ tag_name }}</a>
+            {% endfor %}
+            {% else %}Без тегов{% endif %}
+          </p>
+
+          <div class="card__foot">
+            <span class="card__meta">{{ block.section_name }}</span>
+
+            <div class="calc__row">
+              <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}"
+                 title="Открыть карточку">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </a>
+
+              <button class="btn btn--primary" type="button" data-copy-target="block-body-{{ block.id }}"
+                      title="Скопировать текст в буфер обмена">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="8" y="8" width="14" height="14" rx="2"/>
+                  <path d="M4 16V6a2 2 0 0 1 2-2h10"/>
+                </svg>
+              </button>
+
+              <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}/edit"
+                 title="Редактировать карточку">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                </svg>
+              </a>
+
+              <form method="post" action="/templates-db/blocks/{{ block.id }}/delete"
+                    data-confirm="Удалить карточку «{{ block.title }}»?">
+                <button class="btn btn--ghost" type="submit" title="Удалить карточку">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"/>
+                    <path d="M8 6V4h8v2"/>
+                    <path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6"/>
+                    <path d="M14 11v6"/>
+                  </svg>
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {# Скрытый текст заготовки: источник для кнопки копирования #}
+          <div class="msg__bubble" hidden id="block-body-{{ block.id }}">{{ block.body }}</div>
+        </article>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="panel__hint">Карточек не найдено: измените условия поиска или добавьте новую карточку.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/templates_db.js') }}"></script>
+{% endblock %}

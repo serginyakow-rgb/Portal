@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}{% if block %}Правка карточки{% else %}Новая карточка{% endif %} · Нотариальная контора{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">{% if block %}Изменение карточки{% else %}Новая карточка{% endif %}</h1>
+    <span class="panel__hint">
+      {% if block %}Раздел: {{ block.section_name }}{% else %}Текст попадёт в общую базу конторы{% endif %}
+    </span>
+  </div>
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <form class="calc__form" method="post"
+        action="{% if block %}/templates-db/blocks/{{ block.id }}/edit{% else %}/templates-db/blocks/new{% endif %}">
+    <div class="field">
+      <label for="section_id">Раздел</label>
+      <select id="section_id" name="section_id" required>
+        {% for section in sections %}
+        <option value="{{ section.id }}"{% if section.id == section_id %} selected{% endif %}>
+          {{ section.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="title">Заголовок карточки</label>
+      <input id="title" name="title" type="text" value="{{ title }}" required maxlength="200"
+             autocomplete="off" placeholder="Например: Доверенность на получение документов">
+    </div>
+
+    <div class="field">
+      <label for="tags">Теги (через запятую)</label>
+      <input id="tags" name="tags" type="text" value="{{ tags }}" autocomplete="off"
+             placeholder="Например: доверенность, документы">
+    </div>
+
+    <div class="field">
+      <label for="body">Текст карточки</label>
+      <div class="composer">
+        <textarea id="body" name="body" rows="8" required
+                  placeholder="Наберите или вставьте текст карточки">{{ body }}</textarea>
+      </div>
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">
+        {% if block %}Сохранить изменения{% else %}Добавить карточку{% endif %}
+      </button>
+      <a class="btn btn--ghost"
+         href="{% if block %}/templates-db/blocks/{{ block.id }}{% else %}/templates-db/{% endif %}"
+         title="Вернуться без сохранения">Отмена</a>
+      <span class="panel__hint">Новые теги добавляются в базу автоматически</span>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/templates_db.js') }}"></script>
+{% endblock %}

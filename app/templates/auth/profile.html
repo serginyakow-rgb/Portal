@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Мой профиль · Нотариальная контора{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Мой профиль</h1>
+    <span class="panel__hint">{{ user.full_name }} · Роль: {{ role_label }}</span>
+  </div>
+
+  {% if updated %}
+  <p class="status status--done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+      <path d="m9 11 3 3L22 4"/>
+    </svg>
+    Пароль изменён. Для следующего входа используйте новый пароль.
+  </p>
+  {% endif %}
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <form class="calc__form" method="post" action="/auth/profile/password">
+    <div class="field">
+      <label for="current_password">Текущий пароль</label>
+      <input id="current_password" name="current_password" type="password" required
+             autocomplete="current-password">
+    </div>
+
+    <div class="field">
+      <label for="new_password">Новый пароль</label>
+      <input id="new_password" name="new_password" type="password" required autocomplete="new-password">
+    </div>
+
+    <div class="field">
+      <label for="new_password_repeat">Повторите новый пароль</label>
+      <input id="new_password_repeat" name="new_password_repeat" type="password" required
+             autocomplete="new-password">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Сохранить пароль</button>
+      <span class="panel__hint">Имя для входа меняет только администратор; сессия остаётся активной</span>
+    </div>
+  </form>
+</section>
+{% endblock %}

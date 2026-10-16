@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Вход · Нотариальная контора{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Вход в портал</h1>
+    <span class="panel__hint">Только для сотрудников конторы</span>
+  </div>
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <form class="calc__form" method="post" action="/auth/login">
+    <div class="field">
+      <label for="full_name">Имя</label>
+      <input id="full_name" name="full_name" type="text" value="{{ full_name }}" required
+             autocomplete="username" placeholder="Иванов Иван Иванович">
+    </div>
+
+    <div class="field">
+      <label for="password">Пароль</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Войти</button>
+      <span class="panel__hint">Русские буквы, пробел и дефис</span>
+    </div>
+  </form>
+</section>
+{% endblock %}

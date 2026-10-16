@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Нотариальная контора{% endblock %}</title>
+  {# ?v= — версия статики: новый URL заставляет браузер забрать свежие стили #}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=2">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header__brand">
+        <img src="{{ url_for('static', path='img/logo.jpg') }}" alt="Логотип" class="brand__logo">
+        <div class="brand__text">
+          <span class="brand__title">Нотариальная контора</span>
+          <span class="brand__sub">Внутренний портал</span>
+        </div>
+      </div>
+
+      <div class="header__actions">
+        {% if user %}
+        <div class="profile">
+          <span class="profile__ava">{{ initials }}</span>
+          <span class="profile__meta">
+            <span class="profile__name">{{ user.full_name }}</span>
+            <span class="profile__role">{{ role_label }}</span>
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <span class="sidebar__label">Разделы</span>
+
+        <nav class="menu">
+          <form method="get" action="/templates-db/">
+            <button class="menu__item {% if active_menu == 'templates_db' %}is-active{% endif %}" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z"/>
+                <path d="M14 2v5h5"/>
+                <path d="M16 13H8"/>
+                <path d="M16 17H8"/>
+                <path d="M10 9H8"/>
+              </svg>
+              <span class="menu__text">База данных</span>
+            </button>
+          </form>
+
+          <form method="get" action="/calculators/">
+            <button class="menu__item {% if active_menu == 'calculators' %}is-active{% endif %}" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="16" height="20" x="4" y="2" rx="2"/>
+                <line x1="8" x2="16" y1="6" y2="6"/>
+                <line x1="16" x2="16" y1="14" y2="18"/>
+                <path d="M16 10h.01"/>
+                <path d="M12 10h.01"/>
+                <path d="M8 10h.01"/>
+                <path d="M12 14h.01"/>
+                <path d="M8 14h.01"/>
+                <path d="M12 18h.01"/>
+                <path d="M8 18h.01"/>
+              </svg>
+              <span class="menu__text">Калькуляторы</span>
+            </button>
+          </form>
+
+          {% if user and user.role == 'admin' %}
+          <form method="get" action="/auth/users">
+            <button class="menu__item {% if active_menu == 'users' %}is-active{% endif %}" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <polyline points="16 11 18 13 22 9"/>
+              </svg>
+              <span class="menu__text">Пользователи</span>
+              {% if users is defined %}
+              <span class="menu__count">{{ users|length }}</span>
+              {% endif %}
+            </button>
+          </form>
+          {% endif %}
+
+          {% if user %}
+          <form method="get" action="/auth/profile">
+            <button class="menu__item {% if active_menu == 'profile' %}is-active{% endif %}" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span class="menu__text">Мой профиль</span>
+            </button>
+          </form>
+
+          <form method="post" action="/auth/logout">
+            <button class="menu__item" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" x2="9" y1="12" y2="12"/>
+              </svg>
+              <span class="menu__text">Выйти</span>
+            </button>
+          </form>
+          {% endif %}
+        </nav>
+
+        <div class="sidebar__footer">
+          <span class="dot-live"></span>
+          <span>Портал доступен</span>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  {% block scripts %}{% endblock %}
+  <script src="{{ url_for('static', path='js/app.js') }}"></script>
+</body>
+</html>

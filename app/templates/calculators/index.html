@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Калькуляторы · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Список калькуляторов раздела: карточка на каждый калькулятор #}
+<section class="panel panel--calculators">
+  <div class="panel__head">
+    <h1 class="panel__title">Калькуляторы</h1>
+    <span class="panel__hint">Расчёты по нотариальным тарифам</span>
+  </div>
+
+  <div class="cards">
+    {% for calculator in calculators %}
+    <article class="card">
+      <div class="card__title">{{ calculator.title }}</div>
+      <p class="card__meta">{{ calculator.description }}</p>
+
+      <div class="card__foot">
+        <div class="calc__row">
+          <a class="btn btn--primary" href="{{ calculator.url }}"
+             title="Открыть калькулятор">Открыть</a>
+        </div>
+      </div>
+    </article>
+    {% else %}
+    <p class="panel__hint">Калькуляторов пока нет.</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

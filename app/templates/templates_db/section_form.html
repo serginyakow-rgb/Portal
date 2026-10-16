@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{% if section %}Правка раздела{% else %}Новый раздел{% endif %} · Нотариальная контора{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">{% if section %}Изменение раздела: {{ section.name }}{% else %}Новый раздел{% endif %}</h1>
+    <span class="panel__hint">Разделы группируют карточки по темам</span>
+  </div>
+
+  {% if error %}
+  <p class="status status--warn">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" x2="12" y1="8" y2="12"/>
+      <line x1="12" x2="12.01" y1="16" y2="16"/>
+    </svg>
+    {{ error }}
+  </p>
+  {% endif %}
+
+  <form class="calc__form" method="post"
+        action="{% if section %}/templates-db/sections/{{ section.id }}/edit{% else %}/templates-db/sections/new{% endif %}">
+    <div class="field">
+      <label for="name">Название раздела</label>
+      <input id="name" name="name" type="text" value="{{ name }}" required maxlength="120"
+             autocomplete="off" placeholder="Например: Доверенности">
+    </div>
+
+    <div class="field">
+      <label for="description">Описание (необязательно)</label>
+      <input id="description" name="description" type="text" value="{{ description }}" maxlength="500"
+             autocomplete="off" placeholder="Короткое пояснение для сотрудников">
+    </div>
+
+    <div class="field">
+      <label for="sort_order">Порядок в списке</label>
+      <input id="sort_order" name="sort_order" type="number" step="1" value="{{ sort_order }}"
+             placeholder="0">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">
+        {% if section %}Сохранить изменения{% else %}Создать раздел{% endif %}
+      </button>
+      <a class="btn btn--ghost" href="/templates-db/" title="Вернуться к базе карточек">Отмена</a>
+      <span class="panel__hint">Название раздела не должно повторяться</span>
+    </div>
+  </form>
+
+  {% if section %}
+  <form class="calc__form" method="post" action="/templates-db/sections/{{ section.id }}/delete"
+        data-confirm="Удалить раздел «{{ section.name }}»?">
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="submit" title="Удалить раздел (только пустой)">Удалить раздел</button>
+      <span class="panel__hint">Удалить можно только раздел, в котором нет карточек</span>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/templates_db.js') }}"></script>
+{% endblock %}

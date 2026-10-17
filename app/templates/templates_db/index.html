@@ -83,33 +83,34 @@
 </section>
 
 <div class="layout">
-  {# Левая колонка: разделы заготовок #}
-  <aside>
-    <section class="panel">
-
+  {# Левая колонка: разделы заготовок — как пункты главного меню, но на светлом фоне:
+     колонка .sidebar--light (белая поверхность) и пункты .menu__item с иконкой, названием и счётчиком #}
+  <aside{% if sections %} class="sidebar sidebar--light"{% endif %}>
+    {% if sections %}
+    <nav class="menu">
       {% for section in sections %}
-      <article class="card" data-section-edit="/templates-db/sections/{{ section.id }}/edit">
-        {% if section.sort_order %}
-        <div class="card__top">
-          <span class="card__meta">Порядок: {{ section.sort_order }}</span>
-        </div>
-        {% endif %}
-
-        <div class="card__top">
-          <a class="status {% if active_section and active_section.id == section.id %}status--done{% else %}status--progress{% endif %}"
-             href="/templates-db/search?section_id={{ section.id }}"
-             title="Показать все карточки раздела">{{ section.name }}</a>
-          <span class="card__meta">{{ section.blocks_count }}</span>
-        </div>
-
-        {% if section.description %}
-        <p class="card__meta">{{ section.description }}</p>
-        {% endif %}
-      </article>
-      {% else %}
-      <p class="panel__hint">Разделов пока нет — создайте первый кнопкой выше.</p>
+      {# Пункт раздела — как пункт меню: одиночный клик открывает карточки раздела,
+         двойной — редактирование раздела (см. js/templates_db.js) #}
+      <form method="get" action="/templates-db/search">
+        <input type="hidden" name="section_id" value="{{ section.id }}">
+        <button class="menu__item {% if active_section and active_section.id == section.id %}is-active{% endif %}"
+                type="submit"
+                data-section-edit="/templates-db/sections/{{ section.id }}/edit"
+                title="{% if section.sort_order %}Порядок: {{ section.sort_order }}. {% endif %}{% if section.description %}{{ section.description }}. {% endif %}Одиночный клик — карточки раздела, двойной — редактирование">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>
+          </svg>
+          <span class="menu__text">{{ section.name }}</span>
+          <span class="menu__count">{{ section.blocks_count }}</span>
+        </button>
+      </form>
       {% endfor %}
+    </nav>
+    {% else %}
+    <section class="panel">
+      <p class="panel__hint">Разделов пока нет — создайте первый кнопкой выше.</p>
     </section>
+    {% endif %}
   </aside>
 
   {# Правая колонка: заготовки выбранного раздела или результаты поиска #}

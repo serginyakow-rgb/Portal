@@ -184,6 +184,16 @@ button { font-family: inherit; }
   color: rgba(255, 255, 255, 0.5);
 }
 
+/* Светлый вариант колонки: разделы «Базы данных» — белый фон, текст как в заголовке
+   панели .panel__title (гарнитура портала, тёмно-синий, 600); размер прежний — 14.5px.
+   Цвет и начертание — намеренное исключение только для этого раздела портала) */
+.sidebar--light { background: var(--surface); }
+.sidebar--light .menu__item { color: var(--navy); font-family: var(--font); font-weight: 600; }
+/* перекрывает белый цвет базового .menu__item:hover: на белом фоне он не виден */
+.sidebar--light .menu__item:hover,
+.sidebar--light .menu__item.is-active { color: var(--navy); }
+.sidebar--light .menu__count { background: rgba(10, 42, 77, 0.10); color: var(--navy); }
+
 .menu { display: flex; flex-direction: column; }
 
 .menu__item {
@@ -339,8 +349,8 @@ button { font-family: inherit; }
   color: var(--muted);
 }
 
-/* Индикаторы статусов */
-.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+/* Индикаторы статусов; тег-чип в «Базе данных» — ссылка, линия под ним не нужна */
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
 .status svg { width: 16px; height: 16px; flex: none; }
 .status--done { color: var(--success); }
 .status--warn { color: var(--warning); }
@@ -389,6 +399,7 @@ button { font-family: inherit; }
   background: transparent;
   font-size: 14px;
   font-weight: 600;
+  text-decoration: none;   /* ссылка-кнопка: текст без подчёркивания */
   cursor: pointer;
   white-space: nowrap;
   transition: background-color .3s ease, color .3s ease, border-color .3s ease;
@@ -433,10 +444,14 @@ button { font-family: inherit; }
   border-color: var(--navy);
   box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
 }
+/* Содержимое блока показателей прижато к верхнему краю — как в рабочей копии
+   app/static/css/styles.css: у формы и у блока одинаковый padding 18px,
+   поэтому подпись первого показателя стоит на одной линии с подписью первого
+   поля ввода. Раньше содержимое центрировалось по вертикали. */
 .calc__out {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 18px;
   background: var(--navy);

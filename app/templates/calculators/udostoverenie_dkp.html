@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Удостоверение ДКП · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Калькулятор «Нотариальный тариф за удостоверение договора купли-продажи
+   недвижимости» (необязательная нотариальная форма): слева поля ввода, справа
+   показатели. Расчёт идёт в браузере (static/js/udostoverenie-dkp.js), введённые
+   значения хранятся в localStorage. #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Нотариальный тариф за удостоверение договора купли-продажи недвижимости</h1>
+    <span class="panel__hint">Расчёт обновляется при вводе</span>
+  </div>
+
+  <p class="panel__title">(необязательная нотариальная форма)</p>
+  <p class="panel__title">&nbsp;</p>
+
+  {# Сетка блока одна с калькулятором обязательной формы (.calc--tariff):
+     два столбца по 350px и третий, невидимый, растягиваемый — поэтому оба
+     калькулятора раздела выглядят одинаково. #}
+  <div class="calc calc--tariff">
+    <form class="calc__form" id="udostoverenie-dkp-form" autocomplete="off">
+      <div class="field">
+        <label for="udostoverenie-dkp-price">Цена договора, ₽</label>
+        <input id="udostoverenie-dkp-price" name="price" type="text" inputmode="decimal" data-money
+               data-money-decimals="2" placeholder="Например: 1 500 000">
+      </div>
+
+      <div class="field">
+        <label for="udostoverenie-dkp-base">Базовый региональный тариф, ₽</label>
+        <input id="udostoverenie-dkp-base" name="base" type="text" inputmode="decimal" data-money
+               data-money-decimals="2" placeholder="Например: 20 000">
+      </div>
+
+      <div class="field">
+        <label for="udostoverenie-dkp-kind">Кому отчуждается недвижимость</label>
+        <select id="udostoverenie-dkp-kind" name="kind">
+          {% for value, label in recipients.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="calc__row">
+        <button class="btn btn--primary" id="udostoverenie-dkp-reset" type="button">Очистить</button>
+        <a class="btn btn--ghost" href="/calculators/"
+           title="Вернуться к списку калькуляторов">К списку</a>
+      </div>
+    </form>
+
+    <aside class="calc__out">
+      <span class="label">Федеральный тариф</span>
+      <span class="value" id="udostoverenie-dkp-out-federal">0&nbsp;₽</span>
+
+      <span class="label">Региональный тариф</span>
+      <span class="value" id="udostoverenie-dkp-out-regional">0&nbsp;₽</span>
+
+      <span class="label">Итого</span>
+      <span class="value value--total" id="udostoverenie-dkp-out-total">0&nbsp;₽</span>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/udostoverenie-dkp.js') }}"></script>
+{% endblock %}

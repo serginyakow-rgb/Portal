@@ -1,5 +1,7 @@
 """Маршруты модуля «Калькуляторы»: список калькуляторов, тариф за удостоверение
-договора купли-продажи недвижимости и расчёт госпошлины.
+договора купли-продажи недвижимости, страница удостоверения ДКП (клиентский
+расчёт), тариф за удостоверение договора дарения недвижимости и расчёт
+госпошлины.
 
 Префикс адресов (/calculators) задаётся при подключении роутера в app/main.py,
 поэтому внутри модуля пути указаны без префикса.
@@ -17,6 +19,8 @@ from app.modules.calculators.schemas import (
     DEFAULT_DEAL_TYPE,
     DEFAULT_PAYER_TYPE,
     DEAL_TYPE_LABELS,
+    DARENIE_RECIPIENT_LABELS,
+    DKP_RECIPIENT_LABELS,
     PAYER_TYPE_LABELS,
     GosposhlinaInput,
     GosposhlinaResult,
@@ -92,6 +96,41 @@ async def kuplya_prodazha_page(request: Request, user: CurrentUser) -> HTMLRespo
         "calculators/kuplya_prodazha.html",
         user=user,
         active_menu=MENU_CALCULATORS,
+    )
+
+
+@router.get("/udostoverenie-dkp", response_class=HTMLResponse, response_model=None)
+async def udostoverenie_dkp_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор нотариального тарифа за удостоверение ДКП (необязательная форма).
+
+    Расчёт выполняет браузер (static/js/udostoverenie-dkp.js): показатели
+    обновляются сразу при вводе, значения полей сохраняются в localStorage.
+    Подписи выпадающего списка приходят из справочника DKP_RECIPIENT_LABELS.
+    """
+    return render(
+        request,
+        "calculators/udostoverenie_dkp.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
+        recipients=DKP_RECIPIENT_LABELS,
+    )
+
+
+@router.get("/udostoverenie-dareniya", response_class=HTMLResponse, response_model=None)
+async def udostoverenie_dareniya_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор нотариального тарифа за удостоверение договора дарения
+    недвижимости.
+
+    Расчёт выполняет браузер (static/js/udostoverenie-dareniya.js): показатели
+    обновляются сразу при вводе, значения полей сохраняются в localStorage.
+    Подписи выпадающего списка приходят из справочника DARENIE_RECIPIENT_LABELS.
+    """
+    return render(
+        request,
+        "calculators/udostoverenie_dareniya.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
+        recipients=DARENIE_RECIPIENT_LABELS,
     )
 
 

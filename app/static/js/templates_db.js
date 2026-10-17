@@ -100,18 +100,24 @@
     copyToClipboard(sourceId.slice(prefix.length), button);
   });
 
-  // Задержка одиночного клика по названию раздела — она даёт шанс двойному клику
+  // Задержка одиночного клика по пункту раздела — она даёт шанс двойному клику
   var SECTION_CLICK_DELAY = 250;
   var sectionClickTimer = null;
 
-  function followLink(link) {
-    window.location.assign(link.getAttribute("href"));
+  // Переход по пункту раздела: кнопка отправляет свою форму, ссылка — переходит по href
+  function followLink(element) {
+    var form = element.form;
+    if (form) {
+      form.submit();
+      return;
+    }
+    window.location.assign(element.getAttribute("href"));
   }
 
-  // Одиночный клик по названию раздела открывает список его карточек
+  // Одиночный клик по пункту раздела открывает список его карточек
   document.addEventListener("click", function (event) {
-    var link = event.target.closest("[data-section-edit] a.status");
-    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) {
+    var row = event.target.closest("[data-section-edit] .menu__item");
+    if (!row || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) {
       return;
     }
     event.preventDefault();
@@ -120,18 +126,19 @@
     }
     sectionClickTimer = window.setTimeout(function () {
       sectionClickTimer = null;
-      followLink(link);
+      followLink(row);
     }, SECTION_CLICK_DELAY);
   });
 
-  // Двойной клик по карточке раздела открывает раздел на редактирование
+  // Двойной клик по пункту раздела открывает раздел на редактирование
   document.addEventListener("dblclick", function (event) {
     var card = event.target.closest("[data-section-edit]");
     if (!card) {
       return;
     }
-    // Кнопки карточки («Редактировать», «Удалить») обрабатывают клик сами
-    if (event.target.closest(".btn, button, form")) {
+    // Кнопки-действия карточки («Редактировать», «Удалить») обрабатывают клик сами;
+    // сам пункт раздела — кнопка .menu__item, поэтому двойной клик по нему не отсекается
+    if (event.target.closest(".btn, [data-confirm]")) {
       return;
     }
     if (sectionClickTimer !== null) {

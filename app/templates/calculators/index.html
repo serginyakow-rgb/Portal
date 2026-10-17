@@ -14,7 +14,9 @@
     {% for calculator in calculators %}
     <article class="card">
       <div class="card__title">{{ calculator.title }}</div>
+      {% if calculator.description %}
       <p class="card__meta">{{ calculator.description }}</p>
+      {% endif %}
 
       <div class="card__foot">
         <div class="calc__row">

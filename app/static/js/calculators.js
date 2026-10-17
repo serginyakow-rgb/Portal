@@ -10,11 +10,12 @@
   var STORAGE_SHARE = "calculators.dkp.share";
   var STORAGE_BASE = "calculators.dkp.base";
 
-  // Федеральный тариф: 0,5 % от цены договора до 4 000 000 ₽ включительно,
-  // свыше — фиксированные 20 000 ₽
-  var FEDERAL_PRICE_LIMIT = 4000000;
+  // Федеральный тариф для обязательной нотариальной формы: 0,5 % цены
+  // договора, но не менее 300 ₽ и не более 20 000 ₽ (нижняя граница действует
+  // при цене до 60 000 ₽, верхняя — от 4 000 000 ₽)
   var FEDERAL_RATE = 0.005;
-  var FEDERAL_FIXED = 20000;
+  var FEDERAL_MIN = 300;
+  var FEDERAL_MAX = 20000;
 
   // Текст и значок сообщения об ошибке в поле «Доля несовершеннолетних продавцов»
   var SHARE_ERROR_TEXT = "Некорректная доля";
@@ -119,6 +120,16 @@
     return Math.round(value);
   }
 
+  // Федеральный тариф — до округления: 0,5 % цены договора, но не менее 300 ₽
+  // и не более 20 000 ₽. Цена 0 (пустое или мусорное значение поля) тарифа не
+  // даёт: без цены договора удостоверять нечего
+  function federalTariff(price) {
+    if (price <= 0) {
+      return 0;
+    }
+    return Math.min(Math.max(price * FEDERAL_RATE, FEDERAL_MIN), FEDERAL_MAX);
+  }
+
   // Сумма в поле вывода: целое число с разделением разрядов и символом рубля
   // в конце — 250000 => «250 000 ₽»
   function formatMoney(value) {
@@ -165,7 +176,7 @@
     var share = readShare(shareInput ? shareInput.value : "");
 
     // Федеральный тариф
-    var federal = price <= FEDERAL_PRICE_LIMIT ? price * FEDERAL_RATE : FEDERAL_FIXED;
+    var federal = federalTariff(price);
 
     // Льгота — половина базового регионального тарифа, умноженная на долю
     // несовершеннолетних продавцов; при некорректной доле равна 0

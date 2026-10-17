@@ -85,26 +85,48 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
 | `%TEMP%\test_kuplya_prodazha.js` | DOM-заглушка для `calculators.js`: 122 проверки сценариев и границ | `node %TEMP%\test_kuplya_prodazha.js app\static\js\calculators.js` |
 | `%TEMP%\test_udostoverenie_dareniya.js` | то же для `udostoverenie-dareniya.js`: 74 проверки (границы 300 ₽ / 20 000 ₽, деление вдвое для родственников, стоимость доли) | `node %TEMP%\test_udostoverenie_dareniya.js app\static\js\udostoverenie-dareniya.js` |
 | `%TEMP%\http_check_kuplya.py` | живой сервер: 29 проверок страницы, разметки, скриптов и соседних страниц | `python %TEMP%\http_check_kuplya.py` (отчёт — `%TEMP%\http_check_kuplya_out.txt`) |
+| `%TEMP%\http_check_dareniya.py` | живой сервер: 41 проверка страницы дарения — разметка, поля, порядок расчёта, отсутствие лишней подписи карточки | `python %TEMP%\http_check_dareniya.py` (отчёт — `%TEMP%\http_check_dareniya_out.txt`) |
+| `%TEMP%\css_http_check.py` | живой сервер: 25 проверок CSS и страниц — `.calc__out` без вертикального центрирования, `flex-start`, сохранённые padding/gap и горизонтальное выравнивание | `python %TEMP%\css_http_check.py` (отчёт — `%TEMP%\css_http_check_out.txt`) |
+| `%TEMP%\make_calc_probe.py` | сохраняет четыре страницы калькуляторов с измерительным скриптом в `%TEMP%\calc_<имя>.html` для проверки вёрстки в браузере | `python %TEMP%\make_calc_probe.py`, затем headless Chrome |
 
 Первый аргумент Node-тестов — путь к проверяемому скрипту; без него
 `readFileSync(undefined)` падает с `ERR_INVALID_ARG_TYPE`.
 
-Последний прогон (17.10.2026, после правки расчёта дарения): `node --check`
-по всем шести скриптам — без ошибок; `test_kuplya_prodazha.js` — «проверок:
-122, провалов: 0»; `test_udostoverenie_dareniya.js` — «проверок: 74,
-провалов: 0»; `http_check_kuplya.py` — «проверок: 29, провалов: 0» (этот
-прогон был до правки дарения). Дополнительно проверено на запущенном сервере:
-`GET /static/js/udostoverenie-dareniya.js` → 200, в тексте есть `FEDERAL_MIN`,
-`FEDERAL_MAX`, `FEDERAL_RATE`, `CLOSE_DIVISOR`, `federalBase`, старых
-`*_COEFFICIENT` нет. Для HTTP-проверки сервер должен быть запущен
-(`uvicorn app.main:app`, порт 8000); Cookie `portal_token` скрипт получает сам
-через `create_access_token`.
+Последний прогон (17.10.2026, после правки расчёта дарения и выравнивания
+`.calc__out`): `node --check` по всем шести скриптам — без ошибок;
+`test_kuplya_prodazha.js` — «проверок: 122, провалов: 0»;
+`test_udostoverenie_dareniya.js` — «проверок: 74, провалов: 0»;
+`http_check_dareniya.py` — «проверок: 41, провалов: 0»;
+`http_check_kuplya.py` — «проверок: 29, провалов: 0»;
+`css_http_check.py` — «проверок: 25, провалов: 0» (сервер отдаёт `.calc__out`
+с `justify-content: flex-start`, вертикального центрирования не осталось).
+Проверено на запущенном сервере: `GET /static/js/udostoverenie-dareniya.js`
+→ 200, в тексте есть `FEDERAL_MIN`, `FEDERAL_MAX`, `FEDERAL_RATE`,
+`CLOSE_DIVISOR`, `federalBase`, старых `*_COEFFICIENT` нет. Для HTTP-проверки
+сервер должен быть запущен (`uvicorn app.main:app`, порт 8000); Cookie
+`portal_token` скрипт получает сам через `create_access_token`.
+
+### Проверка вёрстки в реальном браузере
+
+Скрипт `%TEMP%\make_calc_probe.py` сохраняет четыре страницы раздела
+(`/calculators/udostoverenie-dareniya`, `/calculators/udostoverenie-dkp`,
+`/calculators/kuplya-prodazha`, `/calculators/gosposhlina`) вместе с их
+стилями; страницы открываются в headless Chrome (`--headless=new
+--window-size=1600,1200 --dump-dom`) и измеряются через
+`getBoundingClientRect()`: сравниваются `top` подписи первого показателя
+`.calc__out .label` и подписи первого поля `.calc__form .label`. Результат
+17.10.2026 — разница **0.00 px** на всех четырёх страницах,
+`getComputedStyle(.calc__out).justifyContent` = `flex-start`. Браузер:
+`C:\Program Files\Google\Chrome\Application\chrome.exe` (единственная
+установленная копия; x86 и пользовательская отсутствуют).
 
 ## Состояние окружения на 17.10.2026
 
 - Портал запущен для работы: `python -m uvicorn app.main:app --host 0.0.0.0
   --port 8000` из корня проекта (проверено 17.10.2026; процесс python, PID 7788,
-  слушает `0.0.0.0:8000`; повторно подтверждено после правки дарения). Логи
+  слушает `0.0.0.0:8000`; повторно подтверждено после правки дарения и после
+  публикации на GitHub — `GET http://127.0.0.1:8000/auth/login` → 200,
+  слушающий сокет по-прежнему у PID 7788). Логи
   этого запуска — `%TEMP%\portal_uvicorn.log` и
   `%TEMP%\portal_uvicorn.err`: в `uvicorn.log`/`uvicorn.err` репозитория не
   пишем, потому что `uvicorn.err` отслеживается git и правка засоряет индекс.
@@ -113,13 +135,14 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
   все интерфейсы.
 - Активен `venv` (Python 3.12.0); для `node --check` и DOM-тестов доступен
   Node.js v24.21.0.
-- Ветка `main`; правки калькуляторов — коммит `d62e656` («Калькуляторы:
-  дарение и ДКП, пороги тарифа, выравнивание показателей»), отправлен
-  в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`).
-  Документальные обновления `memory-bank/` идут отдельными коммитами поверх
-  него; локальная и удалённая ветки совпадают, рабочее дерево чистое.
-  `memory-bank/` отслеживается git с коммита `d62e656`. Отправка выполнена
-  через Git Credential Manager (helper `manager`), логин `serginyakow-rgb`.
+- Ветка `main`; всего четыре коммита: `d446500` (первый), `d62e656`
+  («Калькуляторы: дарение и ДКП, пороги тарифа, выравнивание показателей»),
+  `28a0460` и `f086165` (документация `memory-bank/`). Все отправлены
+  в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`),
+  `origin/main` = `f086165`; локальная и удалённая ветки совпадают, рабочее
+  дерево чистое. `memory-bank/` отслеживается git с коммита `d62e656`.
+  Отправка выполнена через Git Credential Manager (helper `manager`), логин
+  `serginyakow-rgb`; force-push не использовался.
 
 ## Известный мусор
 

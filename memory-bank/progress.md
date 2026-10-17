@@ -38,6 +38,11 @@
   (раздел «Числа», правило 12) требует «Итого» по неокруглённым значениям
   (разница до 1 ₽). Правку не делали: пользователь просил оставить остальные
   расчёты прежними.
+- **Корневой `styles.css` изменён вопреки правилу**: `clinerules/02-calculators.md`
+  требует не менять утверждённый дизайн-код в корне, но правка `.calc__out`
+  (`justify-content: center` → `flex-start`) внесена и в корневой файл, и в
+  рабочую копию `app/static/css/styles.css`. Нужно решение: откатить корень
+  или разрешить синхронизацию копий правилом (см. `activeContext.md`).
 - **Alembic-миграции не настроены**: схемы создаются автоматически, при
   изменении существующей БД колонки добавляются вручную.
 - **Устаревшие примечания README** (структура проекта, раздел «Панель»,
@@ -103,6 +108,18 @@
    `memory-bank/README.md` и `progress.md`), `.env`, `portal.db`, `venv/`,
    логи и `__pycache__/` остались в `.gitignore`. После отправки
    `git ls-remote origin main` = `d62e656`, рабочее дерево чистое.
+   Затем ушли два документальных коммита — `28a0460` (состояние git после
+   публикации) и `f086165` (формулировка без привязки к HEAD); сейчас
+   `origin/main` = `f086165`, история линейная, force-push не было.
+
+12. Актуализация memory bank после публикации (17.10.2026): в
+   `activeContext.md` записана история коммитов и проверка вёрстки реальным
+   браузером, добавлен третий открытый вопрос — корневой `styles.css`
+   изменён вопреки правилу «не менять»; в `techContext.md` — состояние
+   окружения (сервер PID 7788, вход 200), последние прогоны и порядок
+   проверки вёрстки в headless Chrome; в `systemPatterns.md` и
+   `productContext.md` — соответствующие факты; в `progress.md` — этот
+   раздел и команды продолжения работ.
 
 ## Как продолжать работу
 
@@ -117,4 +134,11 @@ node --check app\static\js\calculators.js                    # синтакси�
 node "$env:TEMP\test_kuplya_prodazha.js" app\static\js\calculators.js                    # 122 проверки
 node "$env:TEMP\test_udostoverenie_dareniya.js" app\static\js\udostoverenie-dareniya.js  # 74 проверки
 python "$env:TEMP\http_check_kuplya.py"                      # 29 проверок (нужен запущенный сервер)
+python "$env:TEMP\http_check_dareniya.py"                    # 41 проверка (нужен сервер)
+python "$env:TEMP\css_http_check.py"                         # 25 проверок вёрстки .calc__out
 ```
+
+Проверка выравнивания в реальном браузере: `python "$env:TEMP%\make_calc_probe.py"`
+сохраняет четыре страницы раздела в `%TEMP%`, далее headless Chrome
+(`--headless=new --window-size=1600,1200 --dump-dom`) и `getBoundingClientRect()`
+по подписям показателя и первого поля — разница должна быть 0.00 px.

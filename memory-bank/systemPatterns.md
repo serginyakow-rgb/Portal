@@ -68,9 +68,13 @@ app/modules/<модуль>/
 
 ## Дизайн
 
-- Утверждённый дизайн-код — `styles.css` в корне проекта (не менять) и его
-  рабочая копия `app/static/css/styles.css` (правки только scoped-дополнениями
-  раздела по правилам `clinerules/02-calculators.md`).
+- Утверждённый дизайн-код — `styles.css` в корне проекта; его рабочая копия
+  `app/static/css/styles.css` подключается шаблонами (`base.html`), правки
+  раздела вносятся только в неё (правило `clinerules/02-calculators.md`).
+- Факт на 17.10.2026: правка `.calc__out` (`justify-content: center` →
+  `flex-start`) сделана в **обеих** копиях, чтобы файлы не расходились. Это
+  расходится с правилом «корневой `styles.css` не менять» — открытый вопрос
+  в `activeContext.md` (откатить корень или разрешить синхронизацию).
 - Токены: `--navy #0A2A4D`, `--gold #D4AF37`, `--bg #FAFAFA`,
   `--surface #FFFFFF`, `--text #333333`, `--muted #6B7280`,
   `--divider #E0E0E0`, `--warning #F0785A`, `--success #10B981`,

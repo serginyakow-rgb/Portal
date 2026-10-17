@@ -1,7 +1,7 @@
 """Маршруты модуля «Калькуляторы»: список калькуляторов, тариф за удостоверение
 договора купли-продажи недвижимости, страница удостоверения ДКП (клиентский
-расчёт), тариф за удостоверение договора дарения недвижимости и расчёт
-госпошлины.
+расчёт), тариф за удостоверение договора дарения недвижимости, расчёт долей
+по МСК и расчёт госпошлины.
 
 Префикс адресов (/calculators) задаётся при подключении роутера в app/main.py,
 поэтому внутри модуля пути указаны без префикса.
@@ -131,6 +131,24 @@ async def udostoverenie_dareniya_page(request: Request, user: CurrentUser) -> HT
         user=user,
         active_menu=MENU_CALCULATORS,
         recipients=DARENIE_RECIPIENT_LABELS,
+    )
+
+
+@router.get("/vydelenie-doley-msk", response_class=HTMLResponse, response_model=None)
+async def vydelenie_doley_msk_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор долей по МСК и нотариального тарифа.
+
+    «Расчет» в браузере подбирает долю на каждого члена семьи и её стоимость,
+    а также показывает нотариальный тариф: федеральный, региональный, итого и
+    льготу. Суммы форматируются модулем money-input.js. «Очистить» чистит все
+    поля, кроме «Знаменатель доли (не более)» и «Базовый региональный тариф»
+    (static/js/vydelenie-doley-msk.js).
+    """
+    return render(
+        request,
+        "calculators/vydelenie_doley_msk.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
     )
 
 

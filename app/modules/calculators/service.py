@@ -48,6 +48,11 @@ CALCULATORS: tuple[CalculatorCard, ...] = (
         description="",
         url="/calculators/udostoverenie-dareniya",
     ),
+    CalculatorCard(
+        title="Удостоверение соглашения о выделении долей по МСК",
+        description="Соглашение о выделении долей детям",
+        url="/calculators/vydelenie-doley-msk",
+    ),
 )
 
 

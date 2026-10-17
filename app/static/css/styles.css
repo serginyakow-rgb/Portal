@@ -536,12 +536,19 @@ button { font-family: inherit; }
   border-right: 0;           /* стык с панелью показателей — без двойной линии */
   border-radius: var(--radius) 0 0 var(--radius);
 }
-/* Текст в полях ввода этого блока на 1px крупнее базового (15px вместо 14px):
-   вводимые суммы читаются легче. Подписи полей (label) остаются базовыми;
-   выпадающий список «Кому отчуждается недвижимость» — того же размера, что и
-   поля ввода, иначе столбец полей выглядит разнородным. */
-.calc--tariff .calc__form .field input,
-.calc--tariff .calc__form .field select { font-size: 15px; }
+/* ИСКЛЮЧЕНИЕ раздела «Калькуляторы»: текст в полях ввода и выпадающих списках
+   набран как заголовок страницы (.panel__title) — гарнитура портала, 17px,
+   начертание 600, цвет --navy, трекинг .2px. Действует на все калькуляторы
+   раздела (.calc .calc__form .field); формы других разделов используют
+   .calc__form без .calc и не затрагиваются. Подписи полей (label) прежние. */
+.calc .calc__form .field input,
+.calc .calc__form .field select {
+  font-family: var(--font);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: var(--navy);
+}
 /* Правый рабочий столбец: показатели */
 .calc--tariff .calc__out {
   border: 1px solid var(--navy);
@@ -558,6 +565,33 @@ button { font-family: inherit; }
 }
 /* «Итого» — акцентное золото палитры портала */
 .calc--tariff .calc__out .value--total { color: var(--gold); }
+
+/* Калькулятор «Удостоверение соглашения о выделении долей по МСК»: три рабочих
+   столбца по 350px — поля ввода, поля вывода и блок показателей.
+   Геометрия, рамка и тень взяты у .calc--tariff; средний блок собран тем же
+   классом .calc__form (белый фон, рамка), поэтому линию между первым и вторым
+   столбцами рисует его левая рамка. Правила действуют только на этот блок. */
+.calc--vydelenie-doley-msk { grid-template-columns: repeat(3, 350px); }
+.calc--vydelenie-doley-msk::after { width: calc(3 * 350px); }
+.calc--vydelenie-doley-msk > .calc__form + .calc__form {
+  border-left: 1px solid var(--navy);
+  border-radius: 0;
+  /* В среднем столбце меньше строк, чем в левом. По умолчанию грид-строки
+     растягиваются на всю высоту соседней формы и делят свободное место между
+     полями: поля вывода становились выше полей ввода (81,6 px вместо 44).
+     Прижимаем строки к верху — высота полей остаётся естественной и совпадает
+     со «Стоимостью квартиры» в левом столбце. */
+  align-content: start;
+}
+/* Предупреждение под калькулятором долей по МСК: пока поля не меняли, строка
+   пустая и не занимает места. display: flex нужен, чтобы действовал верхний
+   отступ — у .status по умолчанию inline-flex, а вертикальные отступы
+   строчных элементов на layout не влияют. */
+.calc--vydelenie-doley-msk + .calc-notice {
+  display: flex;
+  margin-top: 12px;
+}
+.calc--vydelenie-doley-msk + .calc-notice:empty { display: none; }
 
 /* ==========================================================================
    ЧАТ
@@ -727,5 +761,8 @@ button { font-family: inherit; }
    прокручивается рабочая область, а не сжимаются колонки. */
 @media (max-width: 900px) {
   .calc--tariff { grid-template-columns: 350px 350px minmax(0, 1fr); }
+
+  /* Калькулятор долей по МСК: три столбца по 350px тоже не сжимаются */
+  .calc--vydelenie-doley-msk { grid-template-columns: repeat(3, 350px); }
 }
 

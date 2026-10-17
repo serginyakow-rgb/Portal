@@ -1,10 +1,9 @@
 # Активный контекст
 
-_Актуализировано 17.10.2026 после выравнивания блока показателей калькуляторов.
-HEAD тот же (`d446500 First commit`); в индексе 15 файлов (+830/−54), поверх них
-незастейдженные правки — `app/static/js/udostoverenie-dareniya.js`,
-`app/static/css/styles.css`, `styles.css` и `clinerules/02-calculators.md`;
-`memory-bank/` — untracked. Факты по скрипту дарения: `FEDERAL_RATE`/
+_Актуализировано 17.10.2026 после коммита и отправки проекта на GitHub.
+HEAD — `d62e656` («Калькуляторы: дарение и ДКП, пороги тарифа, выравнивание
+показателей»), отправлен в `origin/main` (22 файла, +1495/−57), рабочее дерево
+чистое; `memory-bank/` теперь отслеживается git. Факты по скрипту дарения: `FEDERAL_RATE`/
 `FEDERAL_MIN`/`FEDERAL_MAX` — строки 24–26, `CLOSE_DIVISOR` — 29,
 `federalBase` — 151, `federalTariff` — 161, вызов — 221; старых
 `CLOSE_COEFFICIENT`/`OTHER_COEFFICIENT` и функции `coefficient` в файле нет;
@@ -124,25 +123,16 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
 
 ## Состояние репозитория
 
-- Ветка `main`, единственный коммит `d446500 First commit`.
-- Все правки по разделу калькуляторов **застейджены и не закоммичены**:
-  `app/modules/calculators/{routes,schemas,service}.py`,
-  `app/static/js/{calculators,templates_db,udostoverenie-dkp,udostoverenie-dareniya}.js`,
-  `app/templates/calculators/*`, `app/templates/templates_db/index.html`,
-  `app/static/css/styles.css`, `styles.css`, `clinerules/02-calculators.md`
-  (15 файлов, +830/−54).
-- Поверх застейдженного набора — **незастейдженные** правки:
-  `app/static/js/udostoverenie-dareniya.js` (`AM`, порядок расчёта тарифа
-  за удостоверение дарения), `app/static/css/styles.css` и `styles.css`
-  (`MM`, `justify-content: flex-start` у `.calc__out`),
-  `clinerules/02-calculators.md` (`MM`, описание `.calc__out`).
-- `memory-bank/` пока не отслеживается git.
+- Ветка `main`, два коммита: `d446500 First commit` и `d62e656` — правки раздела
+  калькуляторов (дарение, ДКП, госпошлина, `.calc__out`, clinerules, memory-bank).
+- `d62e656` отправлен в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`),
+  локальная и удалённая ветки совпадают; рабочее дерево чистое.
+- В коммит вошли 22 файла (+1495/−57), включая `memory-bank/` (теперь под git).
+- В `.gitignore` остаются `venv/`, `.env`, `*.db`, `*.log`, `__pycache__/` —
+  секреты и артефакты в репозиторий не попали.
 
 ## Возможные следующие шаги
 
-- Застейджить незакоммиченные правки (`udostoverenie-dareniya.js`,
-  `app/static/css/styles.css`, `styles.css`, `clinerules/02-calculators.md`)
-  и закоммитить накопленные изменения по разделу калькуляторов.
 - Ответ на открытый вопрос о минимуме 300 ₽ при пустой цене.
 - Решение по `app/static/_probe.html` (диагностическая страница, роутов нет,
   отслеживается git с первого коммита).

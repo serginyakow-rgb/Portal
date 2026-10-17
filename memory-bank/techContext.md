@@ -113,10 +113,12 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
   все интерфейсы.
 - Активен `venv` (Python 3.12.0); для `node --check` и DOM-тестов доступен
   Node.js v24.21.0.
-- Ветка `main`, HEAD `d446500 First commit`, все правки раздела калькуляторов
-  в индексе, не закоммичены; поверх — незастейдженная правка
-  `app/static/js/udostoverenie-dareniya.js` (расчёт тарифа за дарение);
-  `memory-bank/` — untracked.
+- Ветка `main`, HEAD `d62e656` («Калькуляторы: дарение и ДКП, пороги тарифа,
+  выравнивание показателей»); коммит отправлен в `origin/main`
+  (`https://github.com/serginyakow-rgb/Portal.git`), локальная и удалённая
+  ветки совпадают, рабочее дерево чистое. `memory-bank/` отслеживается git
+  с этого коммита. Отправка выполнена через Git Credential Manager
+  (helper `manager`), логин `serginyakow-rgb`.
 
 ## Известный мусор
 

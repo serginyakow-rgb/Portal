@@ -135,11 +135,12 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
   все интерфейсы.
 - Активен `venv` (Python 3.12.0); для `node --check` и DOM-тестов доступен
   Node.js v24.21.0.
-- Ветка `main`; всего четыре коммита: `d446500` (первый), `d62e656`
+- Ветка `main`; базовые коммиты: `d446500` (первый), `d62e656`
   («Калькуляторы: дарение и ДКП, пороги тарифа, выравнивание показателей»),
-  `28a0460` и `f086165` (документация `memory-bank/`). Все отправлены
-  в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`),
-  `origin/main` = `f086165`; локальная и удалённая ветки совпадают, рабочее
+  `28a0460` и `f086165` (документация `memory-bank/`), дальше — актуализации
+  справочника. Все отправлены
+  в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`); локальная
+  и удалённая ветки совпадают (сверять `git ls-remote origin main`), рабочее
   дерево чистое. `memory-bank/` отслеживается git с коммита `d62e656`.
   Отправка выполнена через Git Credential Manager (helper `manager`), логин
   `serginyakow-rgb`; force-push не использовался.

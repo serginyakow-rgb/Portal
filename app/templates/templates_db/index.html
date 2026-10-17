@@ -136,7 +136,7 @@
             {% if block.tags %}
             {% for tag_name in block.tags %}
             <a class="status status--progress"
-               href="/templates-db/search?tag={{ tag_name|urlencode }}{% if section_id %}&amp;section_id={{ section_id }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}"
+               href="/templates-db/search?tag={{ tag_name|urlencode }}"
                title="Показать карточки с этим тегом">{{ tag_name }}</a>
             {% endfor %}
             {% else %}Без тегов{% endif %}

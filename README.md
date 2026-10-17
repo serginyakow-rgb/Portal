@@ -22,6 +22,9 @@ scripts/      create_admin.py
 clinerules/   01-carcass.md — правила проекта
 ```
 
+Подробная карта проекта — [`PROJECT_MAP.md`](PROJECT_MAP.md): схема слоёв,
+маршруты, модели данных, связки шаблонов и JavaScript, сценарии работы.
+
 ## Быстрый старт
 
 ```powershell

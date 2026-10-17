@@ -123,6 +123,25 @@
    раздел и команды продолжения работ. Состояние git описано без привязки
    к текущему HEAD: перечислены базовые коммиты и признак совпадения веток.
 
+13. Страница «Расчет и сдача» (17.10.2026): карточка в первом блоке списка
+   получила адрес `/calculators/raschet-i-sdacha`; добавлены роут
+   `GET /calculators/raschet-i-sdacha` (`routes.py`), шаблон
+   `calculators/raschet_i_sdacha.html` (два столбца по 340px: таблица из
+   15 полей под надписью «Введите суммы» и поле «Итого»), скрипт
+   `app/static/js/raschet-i-sdacha.js` (сумма полей, Enter → следующее поле,
+   `localStorage`, «Очистить») и scoped-правила `.calc--raschet-i-sdacha`
+   в `app/static/css/styles.css`. Проверки: `node --check`, `py_compile`,
+   `git diff --check` — чисто; HTTP на временном uvicorn `127.0.0.1:8011`
+   (PID 9828, порт 8000 не трогали) — `/calculators/` и новая страница 200,
+   карточка ведёт на новый адрес; headless Chrome — столбцы 340/340, 15 полей,
+   поле 303×44, шаг строк 52, «Итого» 302×44 `readonly`, сумма `1 500` +
+   `250,50` → «1 750,50», Enter переводит к следующему полю, на пятнадцатом
+   фокус остаётся, «Очистить» → «0», горизонтальной прокрутки нет
+   (`scrollWidth` = `clientWidth` = 1382). Документация:
+   `clinerules/02-calculators.md` (§1, §9, §11), `PROJECT_MAP.md`,
+   `productContext.md`, `activeContext.md`, `techContext.md`, `README.md`.
+   Правки не закоммичены.
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

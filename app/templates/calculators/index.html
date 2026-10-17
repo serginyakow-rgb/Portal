@@ -3,15 +3,19 @@
 {% block title %}Калькуляторы · Нотариальная контора{% endblock %}
 
 {% block content %}
-{# Список калькуляторов раздела: карточка на каждый калькулятор #}
+{# Список калькуляторов: карточки сгруппированы в блоки без названий.
+   Каждый блок — отдельная .panel, её нижняя рамка разделяет блоки линией. #}
+{% for block in blocks %}
 <section class="panel panel--calculators">
+  {% if loop.first %}
   <div class="panel__head">
     <h1 class="panel__title">Калькуляторы</h1>
     <span class="panel__hint">Расчёты по нотариальным тарифам</span>
   </div>
+  {% endif %}
 
   <div class="cards">
-    {% for calculator in calculators %}
+    {% for calculator in block %}
     <article class="card">
       <div class="card__title">{{ calculator.title }}</div>
       {% if calculator.description %}
@@ -20,8 +24,14 @@
 
       <div class="card__foot">
         <div class="calc__row">
+          {% if calculator.url %}
           <a class="btn btn--primary" href="{{ calculator.url }}"
              title="Открыть калькулятор">Открыть</a>
+          {% else %}
+          {# Калькулятор ещё не готов: кнопка-заглушка ничего не открывает #}
+          <button class="btn btn--primary" type="button" disabled
+                  title="Калькулятор в разработке">Открыть</button>
+          {% endif %}
         </div>
       </div>
     </article>
@@ -30,4 +40,5 @@
     {% endfor %}
   </div>
 </section>
+{% endfor %}
 {% endblock %}

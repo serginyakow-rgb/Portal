@@ -22,8 +22,8 @@ Jinja2, FastAPI и SQLite. Клиентского фреймворка и сбо
 | Статика | `app/static/`, монтируется на `/static` без кэширования |
 | Авторизация | bcrypt + JWT HS256 в httpOnly-cookie `portal_token` |
 | Функциональные модули | `auth`, `calculators`, `templates_db` |
-| Клиентские скрипты | 7 файлов в `app/static/js/` |
-| Jinja-шаблоны | 16 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
+| Клиентские скрипты | 8 файлов в `app/static/js/` |
+| Jinja-шаблоны | 17 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
 
 ## 2. Слои и направление зависимостей
 
@@ -91,12 +91,12 @@ Portal/
 │   │   ├── base.html            общий каркас, шапка, меню, блок scripts
 │   │   ├── auth/                login.html, users.html, profile.html
 │   │   ├── dashboard/           index.html
-│   │   ├── calculators/         index + 5 страниц + _block_template.html
+│   │   ├── calculators/         index + 6 страниц + _block_template.html
 │   │   └── templates_db/        index, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
 │       ├── img/logo.jpg
-│       ├── js/                  7 клиентских скриптов
+│       ├── js/                  8 клиентских скриптов
 │       └── _probe.html          диагностическая страница, не часть портала
 ├── clinerules/
 │   ├── 01-carcass.md            стек, структура, запреты
@@ -159,16 +159,18 @@ Portal/
 | --- | --- |
 | `routes.py` | каталог, страницы калькуляторов, серверный расчёт госпошлины |
 | `schemas.py` | валидация госпошлины и справочники подписей `*_LABELS` |
-| `service.py` | `CALCULATORS`, тарифы, `calculate_gosposhlina()`, `format_money()` |
+| `service.py` | `CALCULATOR_BLOCKS`, тарифы, `calculate_gosposhlina()`, `format_money()` |
 
-Моделей БД у модуля нет. Каталог карточек задаётся кортежем `CALCULATORS` в
-`service.py`; чтобы добавить калькулятор, нужно добавить карточку, роут, шаблон
-и (для клиентского расчёта) JS-файл.
+Моделей БД у модуля нет. Каталог карточек задаётся кортежем `CALCULATOR_BLOCKS`
+в `service.py` (блоки разделены линиями на странице списка); чтобы добавить
+калькулятор, нужно добавить карточку в нужный блок, роут, шаблон и (для
+клиентского расчёта) JS-файл.
 
 Страницы раздела:
 
 | Калькулятор | Где считается | Ключевая логика |
 | --- | --- | --- |
+| Расчет и сдача | браузер | `raschet-i-sdacha.js`, пятнадцать сумм и поле «Итого» |
 | Купля-продажа, обязательная форма | браузер | `calculators.js`, тариф 0,5 %, минимум 300 ₽, максимум 20 000 ₽ |
 | Удостоверение ДКП, необязательная форма | браузер | `udostoverenie-dkp.js`, категории получателя |
 | Удостоверение дарения недвижимости | браузер | `udostoverenie-dareniya.js`, категории получателя |
@@ -252,6 +254,7 @@ Portal/
 | Метод | Путь | Доступ | Обработчик | Шаблон / результат |
 | --- | --- | --- | --- | --- |
 | GET | `/calculators/` | авторизован | `index_page` | `calculators/index.html` |
+| GET | `/calculators/raschet-i-sdacha` | авторизован | `raschet_i_sdacha_page` | `calculators/raschet_i_sdacha.html` |
 | GET | `/calculators/kuplya-prodazha` | авторизован | `kuplya_prodazha_page` | `calculators/kuplya_prodazha.html` |
 | GET | `/calculators/udostoverenie-dkp` | авторизован | `udostoverenie_dkp_page` | `calculators/udostoverenie_dkp.html` |
 | GET | `/calculators/udostoverenie-dareniya` | авторизован | `udostoverenie_dareniya_page` | `calculators/udostoverenie_dareniya.html` |
@@ -288,6 +291,7 @@ Portal/
 | `auth/login.html`, `auth/users.html`, `auth/profile.html` | нет |
 | `dashboard/index.html` | нет |
 | `calculators/index.html` | нет |
+| `calculators/raschet_i_sdacha.html` | `money-input.js`, `raschet-i-sdacha.js` |
 | `calculators/kuplya_prodazha.html` | `money-input.js`, `calculators.js` |
 | `calculators/udostoverenie_dkp.html` | `money-input.js`, `udostoverenie-dkp.js` |
 | `calculators/udostoverenie_dareniya.html` | `money-input.js`, `udostoverenie-dareniya.js` |
@@ -304,6 +308,7 @@ Portal/
 | Файл | Ответственность |
 | --- | --- |
 | `money-input.js` | форматирование сумм в полях `[data-money]` неразрывными пробелами |
+| `raschet-i-sdacha.js` | сумма пятнадцати полей в «Итого», Enter — к следующему полю |
 | `calculators.js` | тариф за удостоверение договора купли-продажи (обязательная форма) |
 | `udostoverenie-dkp.js` | тариф за удостоверение ДКП (необязательная форма) |
 | `udostoverenie-dareniya.js` | тариф за удостоверение договора дарения |
@@ -458,7 +463,8 @@ POST /templates-db/blocks/new
 
 ### Новый калькулятор
 
-1. Добавить карточку в `CALCULATORS` (`app/modules/calculators/service.py`).
+1. Добавить карточку в `CALCULATOR_BLOCKS` (`app/modules/calculators/service.py`)
+   — в тот блок, где калькулятор должен стоять на странице списка.
 2. Добавить `GET`-роут в `app/modules/calculators/routes.py`.
 3. Создать шаблон в `app/templates/calculators/`.
 4. Для клиентского расчёта создать `app/static/js/<slug>.js` и подключить его

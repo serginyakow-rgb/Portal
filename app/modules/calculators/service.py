@@ -30,34 +30,81 @@ class CalculatorCard:
     url: str
 
 
-# Каталог раздела: чтобы добавить калькулятор, допишите карточку и роут
-CALCULATORS: tuple[CalculatorCard, ...] = (
-    CalculatorCard(
-        title="Удостоверение договора купли-продажи недвижимости",
-        description="Обязательная нотариальная форма",
-        url="/calculators/kuplya-prodazha",
+# Каталог раздела, разбитый на блоки: на странице каждый блок — отдельная
+# панель, блоки разделены горизонтальными линиями, названий у блоков нет.
+# Пустой url — калькулятор ещё не готов: кнопка «Открыть» выводится заглушкой.
+# Чтобы добавить калькулятор, допишите карточку в нужный блок и роут.
+CALCULATOR_BLOCKS: tuple[tuple[CalculatorCard, ...], ...] = (
+    # Блок 1: расчёты и сдача
+    (
+        CalculatorCard(
+            title="Расчет и сдача",
+            description="",
+            url="/calculators/raschet-i-sdacha",
+        ),
+        CalculatorCard(
+            title="Удостоверение копии и равнозначности",
+            description="",
+            url="",
+        ),
     ),
-    CalculatorCard(
-        title="Удостоверение договора купли-продажи недвижимости",
-        description="Необязательная нотариальная форма",
-        url="/calculators/udostoverenie-dkp",
+    # Блок 2: готовые калькуляторы раздела
+    (
+        CalculatorCard(
+            title="Удостоверение договора купли-продажи недвижимости",
+            description="Обязательная нотариальная форма",
+            url="/calculators/kuplya-prodazha",
+        ),
+        CalculatorCard(
+            title="Удостоверение договора купли-продажи недвижимости",
+            description="Необязательная нотариальная форма",
+            url="/calculators/udostoverenie-dkp",
+        ),
+        CalculatorCard(
+            title="Удостоверение договора дарения недвижимости",
+            # Пустое описание — карточка выводится без строки .card__meta
+            description="",
+            url="/calculators/udostoverenie-dareniya",
+        ),
+        CalculatorCard(
+            title="Удостоверение соглашения о выделении долей по МСК",
+            description="Соглашение о выделении долей детям",
+            url="/calculators/vydelenie-doley-msk",
+        ),
     ),
-    CalculatorCard(
-        title="Удостоверение договора дарения недвижимости",
-        # Пустое описание — карточка выводится без строки .card__meta
-        description="",
-        url="/calculators/udostoverenie-dareniya",
-    ),
-    CalculatorCard(
-        title="Удостоверение соглашения о выделении долей по МСК",
-        description="Соглашение о выделении долей детям",
-        url="/calculators/vydelenie-doley-msk",
+    # Блок 3: свидетельства о праве на наследство
+    (
+        CalculatorCard(
+            title="Свидетельство о праве на наследство на недвижимое имущество",
+            description="",
+            url="",
+        ),
+        CalculatorCard(
+            title="Свидетельство о праве на наследство на автотранспорт",
+            description="",
+            url="",
+        ),
+        CalculatorCard(
+            title="Свидетельство о праве на наследство на акции",
+            description="",
+            url="",
+        ),
     ),
 )
 
+# Плоский список всех карточек в порядке вывода на странице
+CALCULATORS: tuple[CalculatorCard, ...] = tuple(
+    calculator for block in CALCULATOR_BLOCKS for calculator in block
+)
+
+
+def list_calculator_blocks() -> list[tuple[CalculatorCard, ...]]:
+    """Блоки карточек раздела в порядке вывода."""
+    return list(CALCULATOR_BLOCKS)
+
 
 def list_calculators() -> list[CalculatorCard]:
-    """Список доступных калькуляторов раздела."""
+    """Все калькуляторы раздела по порядку (включая ещё не готовые)."""
     return list(CALCULATORS)
 
 

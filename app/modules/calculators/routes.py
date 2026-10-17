@@ -1,7 +1,7 @@
-"""Маршруты модуля «Калькуляторы»: список калькуляторов, тариф за удостоверение
-договора купли-продажи недвижимости, страница удостоверения ДКП (клиентский
-расчёт), тариф за удостоверение договора дарения недвижимости, расчёт долей
-по МСК и расчёт госпошлины.
+"""Маршруты модуля «Калькуляторы»: список калькуляторов, расчёт и сдача, тариф
+за удостоверение договора купли-продажи недвижимости, страница удостоверения ДКП
+(клиентский расчёт), тариф за удостоверение договора дарения недвижимости,
+расчёт долей по МСК и расчёт госпошлины.
 
 Префикс адресов (/calculators) задаётся при подключении роутера в app/main.py,
 поэтому внутри модуля пути указаны без префикса.
@@ -28,7 +28,7 @@ from app.modules.calculators.schemas import (
 from app.modules.calculators.service import (
     calculate_gosposhlina,
     format_money,
-    list_calculators,
+    list_calculator_blocks,
 )
 
 router = APIRouter(tags=["calculators"])
@@ -80,7 +80,23 @@ async def index_page(request: Request, user: CurrentUser) -> HTMLResponse:
         "calculators/index.html",
         user=user,
         active_menu=MENU_CALCULATORS,
-        calculators=list_calculators(),
+        blocks=list_calculator_blocks(),
+    )
+
+
+@router.get("/raschet-i-sdacha", response_class=HTMLResponse, response_model=None)
+async def raschet_i_sdacha_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор «Расчет и сдача»: пятнадцать сумм и их общая сумма.
+
+    Расчёт выполняет браузер (static/js/raschet-i-sdacha.js): поле «Итого»
+    обновляется при вводе, а значения полей сохраняются в localStorage.
+    Enter в поле переводит к следующему полю, как Tab.
+    """
+    return render(
+        request,
+        "calculators/raschet_i_sdacha.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
     )
 
 

@@ -100,6 +100,22 @@ async def raschet_i_sdacha_page(request: Request, user: CurrentUser) -> HTMLResp
     )
 
 
+@router.get("/udostoverenie-kopiy", response_class=HTMLResponse, response_model=None)
+async def udostoverenie_kopiy_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор нотариального тарифа за удостоверение копий и равнозначность
+    документов.
+
+    Пока страница-каркас: заголовок и подсказка справа. Поля и формула расчёта
+    задаются отдельной задачей, тогда же подключается static/js/<slug>.js.
+    """
+    return render(
+        request,
+        "calculators/udostoverenie_kopiy.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
+    )
+
+
 @router.get("/kuplya-prodazha", response_class=HTMLResponse, response_model=None)
 async def kuplya_prodazha_page(request: Request, user: CurrentUser) -> HTMLResponse:
     """Калькулятор тарифа за удостоверение договора купли-продажи недвижимости.

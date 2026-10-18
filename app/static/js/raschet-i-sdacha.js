@@ -1,11 +1,13 @@
 /* Модуль «Калькуляторы»: расчёт и сдача. Двенадцать полей ввода сумм
-   складываются в поле «Итого», а «Сдача» — это «Оплачено» минус «Итого».
-   Считает браузер: суммы обновляются при каждом изменении полей и показываются
-   с разделителями разрядов (модуль money-input.js), введённые значения
-   хранятся в localStorage.
+   складываются в показатель «Итого», а «Сдача» — это «Оплачено» минус «Итого».
+   «Итого» и «Сдача» — не поля, а показатели правой панели (.calc__out): скрипт
+   пишет в них текст, как в тарифных калькуляторах, — целые рубли с разделителями
+   разрядов и знаком ₽. Введённые значения хранятся в localStorage.
    Enter в поле переводит к следующему полю — так же, как Tab. */
 (function () {
   "use strict";
+
+  var NBSP = "\u00A0";
 
   // Количество полей таблицы: столько же строк выводит шаблон
   var SLOTS = 12;
@@ -22,9 +24,9 @@
     return;
   }
 
-  var totalInput = document.getElementById("raschet-i-sdacha-out-total");
+  var totalOutput = document.getElementById("raschet-i-sdacha-out-total");
   var paidInput = document.getElementById("raschet-i-sdacha-paid");
-  var changeInput = document.getElementById("raschet-i-sdacha-out-change");
+  var changeOutput = document.getElementById("raschet-i-sdacha-out-change");
   var resetButton = document.getElementById("raschet-i-sdacha-reset");
 
   // Поля таблицы в порядке строк: Enter идёт к следующему полю этого списка
@@ -76,32 +78,30 @@
     return isNaN(value) ? 0 : value;
   }
 
-  // Итог показывается в том же формате, что «Цена договора»: разделители
-  // разрядов и запятая, копейки — только если они есть (0, 1 500, 1 500,50).
-  // Группировку разрядов делает money-input.js — своя логика не нужна.
-  function formatSum(value) {
-    var text = (Math.round(value * 100) / 100).toFixed(2).replace(".", ",");
-    if (text.slice(-3) === ",00") {
-      text = text.slice(0, -3);
-    }
-    return window.MoneyInput ? window.MoneyInput.formatValue(text, 2) : text;
+  // Показатели правой панели — целые рубли, как в тарифных калькуляторах:
+  // неразрывные пробелы между разрядами и знак ₽. Округление только при выводе,
+  // поэтому сумма из копеек не теряется до последнего шага.
+  function formatMoney(value) {
+    var rounded = Math.round(value);
+    var text = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
+    return (rounded < 0 ? "−" : "") + text + NBSP + "₽";
   }
 
   // Итого — сумма всех полей таблицы, округлённая до копеек; сдача — оплачено
   // минус итого. Отрицательной сдачи не бывает: пока оплата не покрыла итог,
-  // в поле остаётся 0.
+  // в показателе остаётся 0.
   function calculate() {
     var total = 0;
     amountInputs.forEach(function (field) {
       total += readNumber(field);
     });
     total = Math.round(total * 100) / 100;
-    if (totalInput) {
-      totalInput.value = formatSum(total);
+    if (totalOutput) {
+      totalOutput.textContent = formatMoney(total);
     }
-    if (changeInput) {
+    if (changeOutput) {
       var change = Math.round((readNumber(paidInput) - total) * 100) / 100;
-      changeInput.value = formatSum(change > 0 ? change : 0);
+      changeOutput.textContent = formatMoney(change > 0 ? change : 0);
     }
   }
 

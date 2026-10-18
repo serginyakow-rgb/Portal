@@ -4,8 +4,9 @@
 
 {% block content %}
 {# Калькулятор «Расчет и сдача»: слева таблица из двенадцати полей ввода сумм,
-   справа поля «Итого», «Оплачено», «Сдача» и кнопки. «Итого» — сумма введённых
-   значений, «Сдача» — оплачено минус итого. Расчёт идёт в браузере
+   поле «Оплачено» и кнопки, справа — показатели «Итого» и «Сдача» того же вида,
+   что в тарифе за удостоверение ДКП. «Итого» — сумма введённых значений,
+   «Сдача» — оплачено минус итого. Расчёт идёт в браузере
    (static/js/raschet-i-sdacha.js), введённые значения хранятся в localStorage. #}
 <section class="panel">
   <div class="panel__head">
@@ -13,9 +14,9 @@
     <span class="panel__hint">Расчёт обновляется при вводе</span>
   </div>
 
-  {# Сетка блока — два столбца по 340px: таблица сумм и блок «Итого» с кнопками.
-     Геометрия — от .calc--tariff, ширину столбцов задаёт
-     .calc--raschet-i-sdacha (app/static/css/styles.css). #}
+  {# Сетка блока — два столбца по 340px: слева таблица сумм, «Оплачено» и кнопки,
+     справа панель показателей. Геометрия — от .calc--tariff, ширину столбцов
+     задаёт .calc--raschet-i-sdacha (app/static/css/styles.css). #}
   <div class="calc calc--tariff calc--raschet-i-sdacha">
     <form class="calc__form" id="raschet-i-sdacha-form" autocomplete="off">
       <div class="field">
@@ -34,31 +35,13 @@
           </tbody>
         </table>
       </div>
-    </form>
 
-    {# Поля вывода — того же вида, что и поля ввода: подпись и поле с той же
-       рамкой и шрифтом. «Итого» и «Сдача» только для чтения, их заполняет
-       скрипт; «Оплачено» вводит кассир. Суммы показываются в том же формате,
-       что и «Цена договора» (data-money). Кнопки — внизу этого столбца: блок
-       растянут по высоте левой таблицы. #}
-    <div class="calc__form">
+      {# «Оплачено» вводит кассир — поле стоит под таблицей, в левом столбце;
+         кнопки — внизу этого же столбца. #}
       <div class="field">
-        <label for="raschet-i-sdacha-out-total">Итого</label>
-        <input id="raschet-i-sdacha-out-total" name="total" type="text" data-money
-               data-money-decimals="2" placeholder="—" readonly tabindex="-1">
-      </div>
-
-      {# «Оплачено» вводит кассир; «Сдача» — расчёт: оплачено минус итого. #}
-      <div class="field">
-        <label for="raschet-i-sdacha-paid">Оплачено</label>
+        <label for="raschet-i-sdacha-paid">Оплачено, ₽</label>
         <input id="raschet-i-sdacha-paid" name="paid" type="text" inputmode="decimal"
                data-money data-money-decimals="2">
-      </div>
-
-      <div class="field">
-        <label for="raschet-i-sdacha-out-change">Сдача</label>
-        <input id="raschet-i-sdacha-out-change" name="change" type="text" data-money
-               data-money-decimals="2" placeholder="—" readonly tabindex="-1">
       </div>
 
       <div class="calc__row">
@@ -66,7 +49,18 @@
         <a class="btn btn--ghost" href="/calculators/"
            title="Вернуться к списку калькуляторов">К списку</a>
       </div>
-    </div>
+    </form>
+
+    {# Поля вывода — того же вида, что в тарифе за удостоверение ДКП: тёмная
+       панель .calc__out, подписи прописными по центру, суммы справа, «Итого» —
+       золотом. Значения заполняет скрипт. #}
+    <aside class="calc__out">
+      <span class="label">Итого</span>
+      <span class="value value--total" id="raschet-i-sdacha-out-total">0&nbsp;₽</span>
+
+      <span class="label">Сдача</span>
+      <span class="value" id="raschet-i-sdacha-out-change">0&nbsp;₽</span>
+    </aside>
   </div>
 </section>
 {% endblock %}

@@ -43,9 +43,9 @@ CALCULATOR_BLOCKS: tuple[tuple[CalculatorCard, ...], ...] = (
             url="/calculators/raschet-i-sdacha",
         ),
         CalculatorCard(
-            title="Удостоверение копии и равнозначности",
+            title="Удостоверение копий и равнозначность документов",
             description="",
-            url="",
+            url="/calculators/udostoverenie-kopiy",
         ),
     ),
     # Блок 2: готовые калькуляторы раздела

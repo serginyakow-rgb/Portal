@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Нотариальный тариф · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Калькулятор «Удостоверение копий и равнозначность документов»: три рабочих
+   столбца по 350px — поля ввода, поля вывода и показатели, как в калькуляторе
+   «Расчет долей по МСК и нотариального тарифа» (vydelenie_doley_msk.html).
+   Ширину столбцов, тень и линию между блоками задаёт .calc--udostoverenie-kopiy,
+   геометрию и вид надписей — .calc--tariff (app/static/css/styles.css). #}
+<section class="panel panel--udostoverenie-kopiy">
+  <div class="panel__head">
+    <h1 class="panel__title">Нотариальный тариф за удостоверение копий и равнозначность документов</h1>
+    <span class="panel__hint">Расчёт обновляется при вводе</span>
+  </div>
+
+  <div class="calc calc--tariff calc--udostoverenie-kopiy">
+    {# Блок 1: поля ввода. «Страниц» — целое число; в расчёт попадают только
+       цифры, пустое или нечисловое значение считается нулём. «Оплачено» — сумма
+       в том же формате, что «Цена договора» в тарифе за удостоверение ДКП:
+       data-money и две цифры после запятой. #}
+    <form class="calc__form" id="udostoverenie-kopiy-form" autocomplete="off">
+      <div class="field">
+        <label for="udostoverenie-kopiy-pages">Страниц</label>
+        <input id="udostoverenie-kopiy-pages" name="pages" type="text" inputmode="numeric"
+               placeholder="Например: 3">
+        <p class="status status--warn" id="udostoverenie-kopiy-pages-error" aria-live="polite"></p>
+      </div>
+
+      <div class="field">
+        <label for="udostoverenie-kopiy-paid">Оплачено, ₽</label>
+        <input id="udostoverenie-kopiy-paid" name="paid" type="text" inputmode="decimal" data-money
+               data-money-decimals="2" placeholder="Например: 1 000">
+      </div>
+
+      <div class="calc__row">
+        <button class="btn btn--primary" id="udostoverenie-kopiy-reset" type="button">Очистить</button>
+        <a class="btn btn--ghost" href="/calculators/"
+           title="Вернуться к списку калькуляторов">К списку</a>
+      </div>
+    </form>
+
+    {# Блок 2: поля вывода тарифов. Вид и формат — как у поля «Цена договора»:
+       подпись над полем, рамка, data-money с копейками. Значения только для
+       чтения, их заполняет расчёт. #}
+    <div class="calc__form">
+      <div class="field">
+        <label for="udostoverenie-kopiy-out-federal">Федеральный тариф, итого, ₽</label>
+        <input id="udostoverenie-kopiy-out-federal" type="text" data-money
+               data-money-decimals="2" placeholder="—" readonly tabindex="-1">
+      </div>
+
+      <div class="field">
+        <label for="udostoverenie-kopiy-out-regional">Региональный тариф, итого, ₽</label>
+        <input id="udostoverenie-kopiy-out-regional" type="text" data-money
+               data-money-decimals="2" placeholder="—" readonly tabindex="-1">
+      </div>
+    </div>
+
+    {# Блок 3: показатели. Разметка и оформление — как у поля «Федеральный тариф»
+       в тарифе за удостоверение ДКП: подпись .label и сумма .value тем же
+       размером, цветом и шрифтом. #}
+    <aside class="calc__out">
+      <span class="label">Итого</span>
+      <span class="value value--total" id="udostoverenie-kopiy-out-total">0&nbsp;₽</span>
+
+      <span class="label">Сдача</span>
+      <span class="value" id="udostoverenie-kopiy-out-change">0&nbsp;₽</span>
+    </aside>
+  </div>
+
+  {# Переключатель вида услуги: под калькулятором, до разделительной линии панели.
+     Активна всегда ровно одна кнопка (aria-pressed), по умолчанию — «Равнозначность
+     (Росреестр)». Ряд выровнен по ширине рабочего блока калькулятора, поэтому все
+     кнопки одной ширины. #}
+  <div class="calc__row" id="udostoverenie-kopiy-mode" role="group"
+       aria-label="Вид услуги">
+    <button class="btn btn--primary" type="button" data-mode="rosreestr"
+            aria-pressed="true">Равнозначность (Росреестр)</button>
+    <button class="btn btn--primary" type="button" data-mode="other"
+            aria-pressed="false">Равнозначность (иное)</button>
+    <button class="btn btn--primary" type="button" data-mode="copies"
+            aria-pressed="false">Копии</button>
+  </div>
+</section>
+
+{# Тарифы по видам услуги: таблица 4×3 под разделительной линией первой панели.
+   Первый столбец — названия строк, остальные три — режимы с теми же подписями,
+   что у переключателя выше. Поля ввода без подписей, поэтому каждому задан
+   aria-label. Внутренние имена (id/name) — FTRos, RTRos, FTInoe, RTInoe,
+   FTICopy, RTCopy: по ним скрипт блока находит ставки для расчёта. #}
+<section class="panel panel--udostoverenie-kopiy">
+  <div class="table-wrap">
+    <table class="table" id="udostoverenie-kopiy-tariffs">
+      <thead>
+        <tr>
+          <th scope="col">Нотариальный тариф за страницу</th>
+          <th scope="col">Равнозначность (Росреестр)</th>
+          <th scope="col">Равнозначность (иное)</th>
+          <th scope="col">Копии</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Федеральный тариф</th>
+          <td>
+            <input id="FTRos" name="FTRos" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Федеральный тариф, равнозначность (Росреестр)">
+          </td>
+          <td>
+            <input id="FTInoe" name="FTInoe" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Федеральный тариф, равнозначность (иное)">
+          </td>
+          <td>
+            <input id="FTICopy" name="FTICopy" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Федеральный тариф, копии">
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Региональный тариф</th>
+          <td>
+            <input id="RTRos" name="RTRos" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Региональный тариф, равнозначность (Росреестр)">
+          </td>
+          <td>
+            <input id="RTInoe" name="RTInoe" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Региональный тариф, равнозначность (иное)">
+          </td>
+          <td>
+            <input id="RTCopy" name="RTCopy" type="text" inputmode="numeric"
+                   autocomplete="off" aria-label="Региональный тариф, копии">
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/udostoverenie-kopiy.js') }}"></script>
+{% endblock %}
+

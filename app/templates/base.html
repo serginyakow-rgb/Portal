@@ -67,6 +67,18 @@
             </button>
           </form>
 
+          {% if user %}
+          <form method="get" action="/auth/profile">
+            <button class="menu__item {% if active_menu == 'profile' %}is-active{% endif %}" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span class="menu__text">Мой профиль</span>
+            </button>
+          </form>
+          {% endif %}
+
           {% if user and user.role == 'admin' %}
           <form method="get" action="/auth/users">
             <button class="menu__item {% if active_menu == 'users' %}is-active{% endif %}" type="submit">
@@ -84,16 +96,6 @@
           {% endif %}
 
           {% if user %}
-          <form method="get" action="/auth/profile">
-            <button class="menu__item {% if active_menu == 'profile' %}is-active{% endif %}" type="submit">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <span class="menu__text">Мой профиль</span>
-            </button>
-          </form>
-
           <form method="post" action="/auth/logout">
             <button class="menu__item" type="submit">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

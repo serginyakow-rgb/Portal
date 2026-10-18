@@ -21,7 +21,9 @@ from app.modules.calculators.schemas import (
     DEAL_TYPE_LABELS,
     DARENIE_RECIPIENT_LABELS,
     DKP_RECIPIENT_LABELS,
+    NASLEDSTVO_RATE_LABELS,
     PAYER_TYPE_LABELS,
+    REGISTRY_FEE_LABELS,
     GosposhlinaInput,
     GosposhlinaResult,
 )
@@ -181,6 +183,26 @@ async def vydelenie_doley_msk_page(request: Request, user: CurrentUser) -> HTMLR
         "calculators/vydelenie_doley_msk.html",
         user=user,
         active_menu=MENU_CALCULATORS,
+    )
+
+
+@router.get("/nasledstvo-nedvizhimost", response_class=HTMLResponse, response_model=None)
+async def nasledstvo_nedvizhimost_page(request: Request, user: CurrentUser) -> HTMLResponse:
+    """Калькулятор нотариального тарифа за выдачу свидетельства о праве на
+    наследство на недвижимое имущество.
+
+    Расчёт выполняет браузер (static/js/nasledstvo-nedvizhimost.js): показатели
+    обновляются сразу при вводе, значения полей сохраняются в localStorage.
+    Ставки выпадающего списка приходят из справочника NASLEDSTVO_RATE_LABELS,
+    размер госпошлины в Росреестр — из REGISTRY_FEE_LABELS.
+    """
+    return render(
+        request,
+        "calculators/nasledstvo_nedvizhimost.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
+        rates=NASLEDSTVO_RATE_LABELS,
+        registry_fees=REGISTRY_FEE_LABELS,
     )
 
 

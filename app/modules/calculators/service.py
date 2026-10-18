@@ -77,7 +77,7 @@ CALCULATOR_BLOCKS: tuple[tuple[CalculatorCard, ...], ...] = (
         CalculatorCard(
             title="Свидетельство о праве на наследство на недвижимое имущество",
             description="",
-            url="",
+            url="/calculators/nasledstvo-nedvizhimost",
         ),
         CalculatorCard(
             title="Свидетельство о праве на наследство на автотранспорт",

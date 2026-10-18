@@ -41,6 +41,28 @@ DARENIE_RECIPIENT_LABELS: dict[PayerType, str] = {
     "other": "Другим лицам",
 }
 
+# Подписи выпадающего списка калькулятора свидетельства о праве на наследство
+# на недвижимое имущество: ставка федерального тарифа. Ключи совпадают со
+# значениями select и с правилами расчёта в
+# app/static/js/nasledstvo-nedvizhimost.js. Порядок словаря = порядок в списке;
+# первая ставка выбрана по умолчанию.
+NasledstvoRate = Literal["0.3", "0.6"]
+NASLEDSTVO_RATE_LABELS: dict[NasledstvoRate, str] = {
+    "0.3": "0,3 %",
+    "0.6": "0,6 %",
+}
+
+# Подписи выпадающего списка «Госпошлина в Росреестр» того же калькулятора:
+# размер платы за регистрацию права, которая прибавляется к нотариальному
+# тарифу. Ключи совпадают со значениями select и с суммами в
+# app/static/js/nasledstvo-nedvizhimost.js. Порядок словаря = порядок в списке;
+# первая строка выбрана по умолчанию.
+RegistryFee = Literal["4000", "700"]
+REGISTRY_FEE_LABELS: dict[RegistryFee, str] = {
+    "4000": "4 000 ₽",
+    "700": "700 ₽",
+}
+
 DEFAULT_DEAL_TYPE: DealType = "realty"
 DEFAULT_PAYER_TYPE: PayerType = "other"
 

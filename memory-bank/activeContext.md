@@ -251,9 +251,10 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
   удалён `app/templates/auth/users.html`; сокращены скрипты калькуляторов
   и шаблоны базы заготовок.
 - Локальная ветка совпадает с `origin/main`
-  (`https://github.com/serginyakow-rgb/Portal.git`); `git ls-remote origin main`
-  = `f44e294bc570c757aa8dc3d564646b8e03aa5a4f`. Force-push не использовался,
-  история линейная.
+  (`https://github.com/serginyakow-rgb/Portal.git`, сверять
+  `git ls-remote origin main`); последний содержательный коммит — `f44e294`,
+  документальные правки `memory-bank/` идут поверх него. Force-push
+  не использовался, история линейная.
 - В `.gitignore` — `venv/`, `.env`, `*.db`, `*.log`, `__pycache__/`; `.env`
   и `*.db` не отслеживаются (в индексе 84 файла). `uvicorn.err` при этом
   отслеживается и виден публично — см. `techContext.md`, «Известный мусор».

@@ -174,8 +174,9 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
   и меню), `f44e294` (настройки и «Пользователи», общий `calc-core`
   и макросы шаблонов, 39 файлов, +932/−1152). Все отправлены
   в `origin/main` (`https://github.com/serginyakow-rgb/Portal.git`); локальная
-  и удалённая ветки совпадают (`f44e294bc570c757aa8dc3d564646b8e03aa5a4f`,
-  сверять `git ls-remote origin main`). После коммита дерево чистое,
+  и удалённая ветки совпадают (сверять `git ls-remote origin main`; последний
+  содержательный коммит — `f44e294`, документальные правки `memory-bank/`
+  идут поверх). Дерево чистое,
   в индексе 84 файла; `memory-bank/` отслеживается git с коммита `d62e656`.
   Отправка выполнена через Git Credential Manager (helper `manager`), логин
   `serginyakow-rgb`; force-push не использовался, история линейная.

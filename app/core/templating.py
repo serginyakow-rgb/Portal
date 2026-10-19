@@ -11,7 +11,6 @@ ROLE_LABELS = {"admin": "Нотариус", "user": "Сотрудник"}
 
 # Значения active_menu для подсветки активного пункта левого меню
 MENU_PANEL = "panel"
-MENU_USERS = "users"
 MENU_PROFILE = "profile"
 
 

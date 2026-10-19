@@ -7,8 +7,6 @@
 (function () {
   "use strict";
 
-  var NBSP = "\u00A0";
-
   // Количество полей таблицы: столько же строк выводит шаблон
   var SLOTS = 12;
 
@@ -38,54 +36,17 @@
     }
   }
 
-  // --- localStorage: в приватном режиме браузера он может быть недоступен,
-  // поэтому все обращения обёрнуты в try — калькулятор продолжает работать ---
-
-  function storageGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
+  // Общие помощники калькуляторов: localStorage, разбор значений и вывод
+  // показателей — модуль calc-core.js (подключён в шаблоне перед этим скриптом)
+  var core = window.CalcCore;
+  if (!core) {
+    return;
   }
-
-  function storageSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      // Без хранилища значения просто не сохранятся до следующего визита
-    }
-  }
-
-  function storageRemove(key) {
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      // см. storageSet
-    }
-  }
-
-  // Сумма из поля: разделители разрядов и прочие пробелы убираем, запятую
-  // принимаем как разделитель дробной части. Пустое, нечисловое и
-  // отрицательное значение дают 0 (защита от мусора в поле).
-  function readNumber(field) {
-    var raw = field ? String(field.value || "") : "";
-    var cleaned = raw.replace(/\s/g, "").replace(",", ".");
-    if (!/^\d+(?:\.\d+)?$/.test(cleaned)) {
-      return 0;
-    }
-    var value = parseFloat(cleaned);
-    return isNaN(value) ? 0 : value;
-  }
-
-  // Показатели правой панели — целые рубли, как в тарифных калькуляторах:
-  // неразрывные пробелы между разрядами и знак ₽. Округление только при выводе,
-  // поэтому сумма из копеек не теряется до последнего шага.
-  function formatMoney(value) {
-    var rounded = Math.round(value);
-    var text = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
-    return (rounded < 0 ? "−" : "") + text + NBSP + "₽";
-  }
+  var storageGet = core.storageGet;
+  var storageSet = core.storageSet;
+  var storageRemove = core.storageRemove;
+  var readNumber = core.readNumber;
+  var formatMoney = core.formatMoneySigned;
 
   // Итого — сумма всех полей таблицы, округлённая до копеек; сдача — оплачено
   // минус итого. Отрицательной сдачи не бывает: пока оплата не покрыла итог,

@@ -19,6 +19,10 @@
                                    (файл только для копирования, роута у него нет)
   Скрипт блока (клиентский расчёт) app/static/js/<slug>.js
   Формат сумм в полях ............ app/static/js/money-input.js (общий, не дублировать)
+  Общие помощники расчёта ........ app/static/js/calc-core.js (localStorage, разбор
+                                   чисел и долей, formatMoney, render; не дублировать)
+  Иконки и статусы в шаблонах .... app/templates/_macros.html (status_warn, status_done,
+                                   icon_*; не копировать SVG в блок)
   Маршруты раздела ............... app/modules/calculators/routes.py
   Карточки, расчёты, format_money . app/modules/calculators/service.py
   Схемы и справочники *_LABELS .... app/modules/calculators/schemas.py
@@ -68,7 +72,9 @@
          <span class="panel__hint">Одна фраза о том, что считаем</span>
        </div>
   3)   (только для серверного расчёта, при ошибке валидации)
-       <p class="status status--warn"> иконка + {{ error }}</p>
+       {% from "_macros.html" import status_warn %} в начале шаблона и
+       {{ status_warn(error) }} — сразу под .panel__head, над .calc;
+       приходит из роута вместе с кодом 400.
   4)   <div class="calc">                — базовый вариант, две колонки
   5)     <form class="calc__form" id="<slug>-form" autocomplete="off">
            N × <div class="field"> ... </div>        — по одному вопросу в строке
@@ -78,9 +84,9 @@
   7)   </div>
   8) </section>
 
-После </section>: {% block scripts %} — сначала money-input.js, затем скрипт
-блока (только если расчёт клиентский). app.js подключает base.html последним,
-его подключать не нужно.
+После </section>: {% block scripts %} — сначала money-input.js, затем
+calc-core.js, затем скрипт блока (только если расчёт клиентский). app.js
+подключает base.html последним, его подключать не нужно.
 
 Внутри формы сначала идут числовые поля (суммы, доли, проценты), затем поля
 справочников (<select>) — от общего вопроса к уточняющему. Каждое поле —
@@ -315,6 +321,7 @@ white-space nowrap. Иконка в кнопке (если нужна) — inlin
 ============================================================
 Подключение — в {% block scripts %} шаблона, ровно в таком порядке:
   <script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+  <script src="{{ url_for('static', path='js/calc-core.js') }}"></script>
   <script src="{{ url_for('static', path='js/<slug>.js') }}"></script>
 app.js подключает base.html — повторно его не подключать.
 
@@ -327,6 +334,26 @@ app.js подключает base.html — повторно его не подк�
   })();
 С guard файл безопасно грузится на любой странице.
 
+Общие помощники — window.CalcCore (calc-core.js), свои копии не писать:
+  storageGet(key) / storageSet(key, value) / storageRemove(key) — безопасный
+    localStorage: внутри try/catch, при недоступном хранилище get возвращает null;
+  saveValue(key, input) / restoreValue(key, input) — сохранение и подстановка
+    значения поля (пустое значение удаляет ключ);
+  readNumber(input) — строгий разбор: пробелы убрать, запятую принять точкой,
+    пустое/нечисловое/отрицательное → 0;
+  readPositiveNumber(input) — мягкий разбор через Number, только > 0 (для полей
+    с маской ввода);
+  readShare(raw) — { filled, valid, numerator, denominator } из «1/2»;
+  formatMoney(value) / formatMoneySigned(value) — «25 000 ₽» / «−1 500 ₽»;
+  formatSum(value) — сумма с копейками для полей вывода;
+  render(element, value) — textContent = formatMoney(value);
+  renderShareError(element, visible, text) — иконка + текст ошибки доли.
+В начале скрипта блока помощники берутся по имени:
+  var core = window.CalcCore;
+  var readNumber = core.readNumber;   // и остальные нужные — так же
+Тарифы, ставки, формулы и правила округления конкретного блока остаются
+в его скрипте: calc-core.js ничего не считает.
+
 Идентификаторы (id и name совпадают):
   <slug>-form            форма
   <slug>-<field>         поле ввода: amount, share, kind …
@@ -338,10 +365,10 @@ app.js подключает base.html — повторно его не подк�
   форматирование сумм — только атрибутами data-money / data-money-decimals;
     после подстановки значений из localStorage вызвать
     window.MoneyInput.format(input);
-  localStorage — ключи вида calculators.<slug>.<field>; все обращения (getItem,
-    setItem, removeItem) в try/catch: в приватном режиме хранилище недоступно,
-    а калькулятор обязан продолжать считать; «Очистить» удаляет только свои
-    ключи и обнуляет показатели;
+  localStorage — ключи вида calculators.<slug>.<field>; работа с хранилищем —
+    через CalcCore (storageGet/storageSet/storageRemove/saveValue/restoreValue):
+    в приватном режиме хранилище недоступно, а калькулятор обязан продолжать
+    считать; «Очистить» удаляет только свои ключи и обнуляет показатели;
   события — только addEventListener, никаких inline onclick: input на числовых
     полях (пересчёт и сохранение), change на select, submit формы —
     event.preventDefault() (Enter в поле не перезагружает страницу), сброс —
@@ -381,8 +408,8 @@ app.js подключает base.html — повторно его не подк�
   в шаблоне рисуется результат: result_text получен из format_money.
 
 service.py:
-  карточка блока — запись в кортеже CALCULATORS (CalculatorCard); список отдаёт
-    list_calculators();
+  карточка блока — запись в кортеже CALCULATOR_BLOCKS (CalculatorCard); список
+    отдаёт list_calculators();
   расчёт — чистая функция, возвращает Pydantic-модель «значение + пояснение»;
   денежные суммы на вывод — format_money («1 500 000,00»), знак ₽ дописывает шаблон.
 
@@ -400,15 +427,19 @@ schemas.py:
 ============================================================
   не менять корневой styles.css и общий calculators.js «под свой блок»;
   не дублировать money-input.js своей логикой форматирования сумм;
+  не дублировать помощники calc-core.js (localStorage, readNumber, readShare,
+    formatMoney, render) и макросы _macros.html в шаблоне блока;
   не создавать классы CSS и не писать style="..." в шаблоне;
   не использовать type="number", alert() и свои подсказки браузера для ошибок;
   не подключать внешние библиотеки, шрифты, иконочные шрифты и CDN: портал
     работает в закрытой сети;
   не заводить модели и таблицы БД под калькулятор — раздел ничего не хранит;
-  не править index.html и карточки вручную — только реестр CALCULATORS;
-  не выносить общую логику в абстракции «на будущее» — только то, что нужно блоку;
-  не переписывать соседние калькуляторы «заодно»: правка одного блока не меняет
-    вид и поведение других.
+  не править index.html и карточки вручную — только реестр CALCULATOR_BLOCKS;
+  не выносить в calc-core.js и _macros.html логику одного блока: общий модуль
+    пополняется только тем, что уже повторяется в двух и более блоках;
+  правка calc-core.js или _macros.html меняет все калькуляторы сразу: после неё
+    обязательна проверка всех семи клиентских блоков (node --check, ввод,
+    восстановление из localStorage, «Очистить»), а не только изменённого.
 
 ============================================================
 15. ШАБЛОН НОВОГО БЛОКА
@@ -421,6 +452,7 @@ schemas.py:
 15.1 Разметка — копия app/templates/calculators/<slug>.html
 --------------------------------------------------------------
 {% extends "base.html" %}
+{% from "_macros.html" import status_warn %}
 
 {% block title %}Короткое название · Нотариальная контора{% endblock %}
 
@@ -435,16 +467,7 @@ schemas.py:
   </div>
 
   {% if error %}
-  <p class="status status--warn">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
-         fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="10"/>
-      <line x1="12" x2="12" y1="8" y2="12"/>
-      <line x1="12" x2="12.01" y1="16" y2="16"/>
-    </svg>
-    {{ error }}
-  </p>
+  {{ status_warn(error) }}
   {% endif %}
 
   <div class="calc">
@@ -493,6 +516,7 @@ schemas.py:
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/calc-core.js') }}"></script>
 <script src="{{ url_for('static', path='js/<slug>.js') }}"></script>
 {% endblock %}
 --------------------------------------------------------------
@@ -512,9 +536,6 @@ schemas.py:
   var STORAGE_SHARE = "calculators.<slug>.share";
   var STORAGE_KIND = "calculators.<slug>.kind";
 
-  // Разделитель разрядов — неразрывный пробел: сумма и знак рубля не разрываются
-  var NBSP = "\u00A0";
-
   var form = document.getElementById("<slug>-form");
   if (!form) {
     return;
@@ -529,108 +550,28 @@ schemas.py:
   var outMain = document.getElementById("<slug>-out-main");
   var outTotal = document.getElementById("<slug>-out-total");
 
-  // --- localStorage: в приватном режиме хранилище недоступно, поэтому все
-  // обращения обёрнуты в try — калькулятор продолжает работать ---
-  function storageGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
-  }
+  // Общие помощники — из calc-core.js (подключён в шаблоне перед этим файлом):
+  // localStorage, разбор чисел и долей, formatMoney, render, ошибка доли
+  var core = window.CalcCore;
+  var storageGet = core.storageGet;
+  var storageSet = core.storageSet;
+  var storageRemove = core.storageRemove;
+  var saveValue = core.saveValue;
+  var restoreValue = core.restoreValue;
+  var readNumber = core.readNumber;
+  var readShare = core.readShare;
+  var formatMoney = core.formatMoney;
+  var render = core.render;
 
-  function storageSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      // Без хранилища значения просто не сохранятся до следующего визита
-    }
-  }
-
-  function storageRemove(key) {
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      // см. storageSet
-    }
-  }
-
-  // Сумма: разделители разрядов и прочие пробелы убираем, запятую принимаем как
-  // разделитель дробной части. Пустое, нечисловое и отрицательное дают 0.
-  function readNumber(input) {
-    var cleaned = String((input && input.value) || "").replace(/\s/g, "").replace(",", ".");
-    if (!/^\d+(?:\.\d+)?$/.test(cleaned)) {
-      return 0;
-    }
-    var value = parseFloat(cleaned);
-    return isNaN(value) ? 0 : value;
-  }
-
-  // Сумма в показателе: целые рубли с разделителями разрядов —
-  // 250000 => «250 000 ₽»
-  function formatMoney(value) {
-    return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP) + NBSP + "₽";
-  }
-
-  function render(element, value) {
-    if (element) {
-      element.textContent = formatMoney(value);
-    }
+  // Сообщение об ошибке показываем только у заполненного поля
+  function renderShareError(visible) {
+    core.renderShareError(shareError, visible);
   }
 --------------------------------------------------------------
 (продолжение — 15.3)
 
 15.3 Скрипт блока (продолжение)
 --------------------------------------------------------------
-  // Доля «числитель/знаменатель»: { filled, valid, numerator, denominator }
-  function readShare(raw) {
-    var share = { filled: false, valid: false, numerator: 0, denominator: 0 };
-    var value = String(raw || "").trim();
-    if (!value) {
-      return share;
-    }
-    share.filled = true;
-    var parts = value.split("/");
-    if (parts.length !== 2) {
-      return share;
-    }
-    var numerator = parts[0].trim();
-    var denominator = parts[1].trim();
-    if (!/^\d+$/.test(numerator) || !/^\d+$/.test(denominator)) {
-      return share;
-    }
-    share.numerator = parseInt(numerator, 10);
-    share.denominator = parseInt(denominator, 10);
-    if (share.denominator === 0 || share.numerator > share.denominator) {
-      return share;
-    }
-    share.valid = true;
-    return share;
-  }
-
-  // Сообщение об ошибке показываем только у заполненного поля
-  function renderShareError(visible) {
-    if (shareError) {
-      shareError.textContent = visible ? "Некорректная доля" : "";
-    }
-  }
-
-  function saveValue(key, input) {
-    var value = input ? String(input.value || "").trim() : "";
-    if (value) {
-      storageSet(key, value);
-    } else {
-      storageRemove(key);
-    }
-  }
-
-  function restoreValue(key, input) {
-    var saved = storageGet(key);
-    if (saved !== null && input) {
-      input.value = saved;
-    }
-  }
-
   // Пересчёт показателей: пустое или мусорное значение поля даёт 0
   function calculate() {
     var amount = readNumber(amountInput);

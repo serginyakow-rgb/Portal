@@ -26,8 +26,6 @@
 
   // Текст и значок сообщения об ошибке целочисленного поля
   var INTEGER_ERROR_TEXT = "Введите целое число больше нуля";
-  var INTEGER_ERROR_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>';
-
   // Сообщения кнопки «Расчет»: не хватает данных или долю подобрать нельзя
   var CALC_INCOMPLETE_TEXT = "Заполните стоимость квартиры, размер МСК, количество членов семьи и знаменатель доли";
   var CALC_SHARE_TEXT = "Не удалось подобрать долю: увеличьте знаменатель или проверьте стоимость квартиры";
@@ -45,10 +43,6 @@
 
   // Федеральный тариф на этой странице всегда равен 500 ₽
   var FEDERAL_TARIFF = 500;
-
-  // Разделитель разрядов и отбивка знака рубля — неразрывный пробел, как в
-  // показателях страницы тарифа за удостоверение ДКП
-  var NBSP = "\u00A0";
 
   // Потолок перебора знаменателей: защита от подвисания, если в поле
   // «Знаменатель доли (не более)» введут очень большое число. Для реальных
@@ -109,51 +103,6 @@
     return null;
   }
 
-  // --- localStorage: в приватном режиме браузера он может быть недоступен,
-  // поэтому все обращения обёрнуты в try — страница продолжает работать ---
-
-  function storageGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function storageSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      // Без хранилища значения просто не сохранятся до следующего визита
-    }
-  }
-
-  function storageRemove(key) {
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      // см. storageSet
-    }
-  }
-
-  // Запоминает значение поля; пустое значение из хранилища убираем
-  function saveValue(key, input) {
-    var value = input ? String(input.value || "").trim() : "";
-    if (value) {
-      storageSet(key, value);
-    } else {
-      storageRemove(key);
-    }
-  }
-
-  // Подставляет сохранённое значение в поле ввода
-  function restoreValue(key, input) {
-    var saved = storageGet(key);
-    if (saved !== null && input) {
-      input.value = saved;
-    }
-  }
-
   // Целое поле: остаются только цифры, ведущие нули отбрасываются.
   // Пустое поле и «0» числом больше нуля не являются — их проверяет
   // renderIntegerError; отрицательный знак и дробная часть не вводятся.
@@ -175,16 +124,6 @@
     }
   }
 
-  // Число из поля ввода: разделители разрядов убираем, запятую принимаем как
-  // десятичный разделитель. Пустое, нечисловое и отрицательное значение дают 0.
-  function readNumber(input) {
-    var value = String(input ? input.value : "")
-      .replace(/\s/g, "")
-      .replace(",", ".");
-    var number = Number(value);
-    return isFinite(number) && number > 0 ? number : 0;
-  }
-
   // Целое положительное из поля: цифры уже отфильтрованы prepareInteger
   function readPositiveInteger(input) {
     var number = Number(String(input ? input.value : "").replace(/\D/g, ""));
@@ -203,12 +142,21 @@
     }
   }
 
-  // Показатель тарифа: целые рубли с разделителями разрядов и знаком рубля —
-  // ровно тот же формат, что у значений второго столбца в тарифе ДКП
-  function formatTariffMoney(value) {
-    var digits = String(Math.round(value));
-    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, NBSP) + NBSP + "₽";
+  // Общие помощники калькуляторов: localStorage, разбор значений и вывод
+  // показателей — модуль calc-core.js (подключён в шаблоне перед этим скриптом)
+  var core = window.CalcCore;
+  if (!core) {
+    return;
   }
+  var storageGet = core.storageGet;
+  var storageSet = core.storageSet;
+  var storageRemove = core.storageRemove;
+  var saveValue = core.saveValue;
+  var restoreValue = core.restoreValue;
+  // Суммы этого блока читаются мягко: поле уже очищено маской ввода
+  var readNumber = core.readPositiveNumber;
+  var formatTariffMoney = core.formatMoney;
+  var INTEGER_ERROR_ICON = core.ERROR_ICON;
 
   function setTariffOutput(element, value) {
     if (element) {

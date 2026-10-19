@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=2">
 </head>
 <body>
+  {% from "_macros.html" import icon_settings %}
   <div class="app">
     <header class="header">
       <div class="header__brand">
@@ -80,17 +81,10 @@
           {% endif %}
 
           {% if user and user.role == 'admin' %}
-          <form method="get" action="/auth/users">
-            <button class="menu__item {% if active_menu == 'users' %}is-active{% endif %}" type="submit">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <polyline points="16 11 18 13 22 9"/>
-              </svg>
-              <span class="menu__text">Пользователи</span>
-              {% if users is defined %}
-              <span class="menu__count">{{ users|length }}</span>
-              {% endif %}
+          <form method="get" action="/settings">
+            <button class="menu__item {% if active_menu == 'settings' %}is-active{% endif %}" type="submit">
+              {{ icon_settings(20) }}
+              <span class="menu__text">Настройки</span>
             </button>
           </form>
           {% endif %}

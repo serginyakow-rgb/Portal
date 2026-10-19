@@ -1,10 +1,9 @@
-"""Маршруты аутентификации: вход по имени, регистрация сотрудников и профиль."""
+"""Маршруты аутентификации: вход по имени и профиль сотрудника."""
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,31 +13,13 @@ from app.core.security import (
     create_access_token,
     verify_password,
 )
-from app.core.templating import MENU_PROFILE, MENU_USERS, render
-from app.modules.auth.dependencies import CurrentUser, OptionalUser, require_role
+from app.core.templating import MENU_PROFILE, render
+from app.modules.auth.dependencies import CurrentUser, OptionalUser
 from app.modules.auth.models import User
-from app.modules.auth.schemas import (
-    AdminUserUpdate,
-    LoginForm,
-    PasswordChange,
-    UserCreate,
-    name_key,
-)
-from app.modules.auth.service import (
-    authenticate_user,
-    create_user,
-    delete_user,
-    get_user_by_id,
-    get_user_by_name,
-    list_users,
-    set_password,
-    update_user,
-)
+from app.modules.auth.schemas import LoginForm, PasswordChange
+from app.modules.auth.service import authenticate_user, set_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# Текущий пользователь с ролью администратора (для раздела «Пользователи»)
-AdminUser = Annotated[User, Depends(require_role("admin"))]
 
 
 def _validation_message(exc: ValidationError) -> str:
@@ -61,34 +42,6 @@ def _render_login(
         user=None,
         full_name=full_name,
         error=error,
-        status_code=status_code,
-    )
-
-
-async def _render_users_page(
-    request: Request,
-    db: AsyncSession,
-    admin: User,
-    *,
-    error: str | None = None,
-    created: bool = False,
-    updated: bool = False,
-    deleted: bool = False,
-    edit_user: User | None = None,
-    status_code: int = status.HTTP_200_OK,
-) -> HTMLResponse:
-    """Рендерит страницу управления пользователями с актуальным списком."""
-    return render(
-        request,
-        "auth/users.html",
-        user=admin,
-        active_menu=MENU_USERS,
-        users=await list_users(db),
-        error=error,
-        created=created,
-        updated=updated,
-        deleted=deleted,
-        edit_user=edit_user,
         status_code=status_code,
     )
 
@@ -160,176 +113,6 @@ async def logout() -> RedirectResponse:
     response = RedirectResponse("/auth/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(TOKEN_COOKIE_NAME, path="/")
     return response
-
-
-@router.get("/users", response_class=HTMLResponse)
-async def users_page(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    admin: AdminUser,
-    created: bool = False,
-    updated: bool = False,
-    deleted: bool = False,
-    edit: int | None = None,
-) -> HTMLResponse:
-    """Список пользователей портала, добавление сотрудника и правка выбранного."""
-    edit_user = await get_user_by_id(db, edit) if edit is not None else None
-    if edit is not None and edit_user is None:
-        # Ссылка устарела: сотрудник уже удалён
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error="Пользователь для изменения не найден",
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-    return await _render_users_page(
-        request,
-        db,
-        admin,
-        created=created,
-        updated=updated,
-        deleted=deleted,
-        edit_user=edit_user,
-    )
-
-
-@router.post("/register", response_class=HTMLResponse, response_model=None)
-async def register(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    admin: AdminUser,
-    full_name: Annotated[str, Form()],
-    password: Annotated[str, Form()],
-    role: Annotated[str, Form()] = "user",
-) -> HTMLResponse | RedirectResponse:
-    """Создаёт сотрудника с именем и паролем: вход будет выполняться по имени."""
-    try:
-        data = UserCreate(full_name=full_name, password=password, role=role)
-    except ValidationError as exc:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error=_validation_message(exc),
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if await get_user_by_name(db, data.full_name) is not None:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error=f"Пользователь с именем «{data.full_name}» уже существует",
-            status_code=status.HTTP_409_CONFLICT,
-        )
-
-    try:
-        await create_user(db, data)
-    except IntegrityError:
-        # Страховка от гонки, если одинаковое имя добавляют одновременно
-        await db.rollback()
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error=f"Пользователь с именем «{data.full_name}» уже существует",
-            status_code=status.HTTP_409_CONFLICT,
-        )
-
-    return RedirectResponse("/auth/users?created=1", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/users/{user_id}/update", response_class=HTMLResponse, response_model=None)
-async def users_update(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    admin: AdminUser,
-    user_id: int,
-    full_name: Annotated[str, Form()],
-    password: Annotated[str, Form()] = "",
-) -> HTMLResponse | RedirectResponse:
-    """Правка сотрудника администратором: имя и, при необходимости, новый пароль."""
-    target = await get_user_by_id(db, user_id)
-    if target is None:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error="Пользователь не найден",
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-
-    try:
-        data = AdminUserUpdate(full_name=full_name, password=password)
-    except ValidationError as exc:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error=_validation_message(exc),
-            edit_user=target,
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if name_key(data.full_name) != target.name_key:
-        existing = await get_user_by_name(db, data.full_name)
-        if existing is not None and existing.id != target.id:
-            return await _render_users_page(
-                request,
-                db,
-                admin,
-                error=f"Имя «{data.full_name}» уже занято другим пользователем",
-                edit_user=target,
-                status_code=status.HTTP_409_CONFLICT,
-            )
-
-    try:
-        await update_user(db, target, full_name=data.full_name, password=data.password)
-    except IntegrityError:
-        # Страховка от гонки, если то же имя занял другой сотрудник
-        await db.rollback()
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error=f"Имя «{data.full_name}» уже занято другим пользователем",
-            edit_user=target,
-            status_code=status.HTTP_409_CONFLICT,
-        )
-
-    return RedirectResponse("/auth/users?updated=1", status_code=status.HTTP_303_SEE_OTHER)
-
-
-@router.post("/users/{user_id}/delete", response_class=HTMLResponse, response_model=None)
-async def users_delete(
-    request: Request,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    admin: AdminUser,
-    user_id: int,
-) -> HTMLResponse | RedirectResponse:
-    """Удаляет сотрудника из портала: свою учётную запись удалить нельзя."""
-    if user_id == admin.id:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error="Нельзя удалить собственную учётную запись",
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    target = await get_user_by_id(db, user_id)
-    if target is None:
-        return await _render_users_page(
-            request,
-            db,
-            admin,
-            error="Пользователь не найден",
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-
-    await delete_user(db, target)
-    return RedirectResponse("/auth/users?deleted=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.get("/profile", response_class=HTMLResponse)

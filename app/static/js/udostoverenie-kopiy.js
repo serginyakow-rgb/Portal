@@ -31,51 +31,6 @@
   var totalOutput = document.getElementById("udostoverenie-kopiy-out-total");
   var changeOutput = document.getElementById("udostoverenie-kopiy-out-change");
 
-  // --- localStorage: в приватном режиме браузера он может быть недоступен,
-  // поэтому все обращения обёрнуты в try — калькулятор продолжает работать ---
-
-  function storageGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function storageSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      // Без хранилища значения просто не сохранятся до следующего визита
-    }
-  }
-
-  function storageRemove(key) {
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      // см. storageSet
-    }
-  }
-
-  // Запоминает значение поля; пустое значение из хранилища убираем
-  function saveValue(key, input) {
-    var value = input ? String(input.value || "").trim() : "";
-    if (value) {
-      storageSet(key, value);
-    } else {
-      storageRemove(key);
-    }
-  }
-
-  // Подставляет сохранённое значение в поле ввода
-  function restoreValue(key, input) {
-    var saved = storageGet(key);
-    if (saved !== null && input) {
-      input.value = saved;
-    }
-  }
-
   // --- Расчёт ---------------------------------------------------------------
   // Ставка за страницу по режимам: внутренние имена полей таблицы. Кнопка
   // режима хранит своё имя в data-mode.
@@ -91,41 +46,20 @@
     rateInputs[input.name] = input;
   });
 
-  // Неразрывный пробел — тот же, что в money-input.js и в показателях
-  var NBSP = "\u00A0";
-
-  // Число из поля: разделители разрядов и прочие пробелы убираем, запятую
-  // принимаем как разделитель дробной части. Пустое, нечисловое и
-  // отрицательное значение дают 0 (защита от мусора в поле).
-  function readNumber(input) {
-    var raw = input ? String(input.value || "") : "";
-    var cleaned = raw.replace(/\s/g, "").replace(",", ".");
-    if (!/^\d+(?:\.\d+)?$/.test(cleaned)) {
-      return 0;
-    }
-    var value = parseFloat(cleaned);
-    return isNaN(value) ? 0 : value;
+  // Общие помощники калькуляторов: localStorage, разбор значений и вывод
+  // показателей — модуль calc-core.js (подключён в шаблоне перед этим скриптом)
+  var core = window.CalcCore;
+  if (!core) {
+    return;
   }
-
-  // Сумма для показа: разделители разрядов и запятая, копейки — только если
-  // они есть (0, 1 500, 1 500,50). Группировку разрядов делает money-input.js.
-  function formatSum(value) {
-    var rounded = Math.round(Math.abs(value) * 100) / 100;
-    var text = rounded.toFixed(2).replace(".", ",");
-    if (text.slice(-3) === ",00") {
-      text = text.slice(0, -3);
-    }
-    text = window.MoneyInput ? window.MoneyInput.formatValue(text, 2) : text;
-    return (value < 0 ? "−" : "") + text;
-  }
-
-  // Показатели «Итого» и «Сдача» — целые рубли с разделителями разрядов и
-  // знаком рубля, как в остальных калькуляторах (округление только при выводе)
-  function formatMoney(value) {
-    var rounded = Math.round(value);
-    var text = String(Math.abs(rounded)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
-    return (rounded < 0 ? "−" : "") + text + NBSP + "₽";
-  }
+  var storageGet = core.storageGet;
+  var storageSet = core.storageSet;
+  var storageRemove = core.storageRemove;
+  var saveValue = core.saveValue;
+  var restoreValue = core.restoreValue;
+  var readNumber = core.readNumber;
+  var formatSum = core.formatSum;
+  var formatMoney = core.formatMoneySigned;
 
   // Активный режим — кнопка с aria-pressed="true"; без выбора считаем Росреестр
   function currentMode() {

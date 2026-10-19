@@ -42,9 +42,6 @@
   var OTHER_OVER_RATE = 0.001;
   var OTHER_CAP = 100000;
 
-  // Разделитель разрядов — неразрывный пробел: сумма и знак рубля не разрываются
-  var NBSP = "\u00A0";
-
   var form = document.getElementById("udostoverenie-dkp-form");
   if (!form) {
     return;
@@ -58,46 +55,6 @@
   var outFederal = document.getElementById("udostoverenie-dkp-out-federal");
   var outRegional = document.getElementById("udostoverenie-dkp-out-regional");
   var outTotal = document.getElementById("udostoverenie-dkp-out-total");
-
-  // --- localStorage: в приватном режиме браузера он может быть недоступен,
-  // поэтому все обращения обёрнуты в try — калькулятор продолжает работать ---
-
-  function storageGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (error) {
-      return null;
-    }
-  }
-
-  function storageSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (error) {
-      // Без хранилища значения просто не сохранятся до следующего визита
-    }
-  }
-
-  function storageRemove(key) {
-    try {
-      window.localStorage.removeItem(key);
-    } catch (error) {
-      // см. storageSet
-    }
-  }
-
-  // Цена договора и базовый региональный тариф: разделители разрядов и прочие
-  // пробелы убираем, запятую принимаем как разделитель дробной части. Пустое,
-  // нечисловое и отрицательное значение дают 0 (защита от мусора в поле).
-  function readNumber(input) {
-    var raw = input ? String(input.value || "") : "";
-    var cleaned = raw.replace(/\s/g, "").replace(",", ".");
-    if (!/^\d+(?:\.\d+)?$/.test(cleaned)) {
-      return 0;
-    }
-    var value = parseFloat(cleaned);
-    return isNaN(value) ? 0 : value;
-  }
 
   // Категория получателя: неизвестное значение списка читаем как первую строку
   // «Супругу, родителям, детям, внукам»
@@ -129,35 +86,19 @@
     return Math.min(overClose, CLOSE_CAP);
   }
 
-  // Сумма в показателе: целые рубли с разделителями разрядов —
-  // 25000 => «25 000 ₽»
-  function formatMoney(value) {
-    return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP) + NBSP + "₽";
+  // Общие помощники калькуляторов: localStorage, разбор значений и вывод
+  // показателей — модуль calc-core.js (подключён в шаблоне перед этим скриптом)
+  var core = window.CalcCore;
+  if (!core) {
+    return;
   }
-
-  function render(element, value) {
-    if (element) {
-      element.textContent = formatMoney(value);
-    }
-  }
-
-  // Запоминает значение поля; пустое значение из хранилища убираем
-  function saveValue(key, input) {
-    var value = input ? String(input.value || "").trim() : "";
-    if (value) {
-      storageSet(key, value);
-    } else {
-      storageRemove(key);
-    }
-  }
-
-  // Подставляет сохранённое значение в поле ввода
-  function restoreValue(key, input) {
-    var saved = storageGet(key);
-    if (saved !== null && input) {
-      input.value = saved;
-    }
-  }
+  var storageGet = core.storageGet;
+  var storageSet = core.storageSet;
+  var storageRemove = core.storageRemove;
+  var saveValue = core.saveValue;
+  var restoreValue = core.restoreValue;
+  var readNumber = core.readNumber;
+  var render = core.render;
 
   // Пересчёт показателей по значениям полей ввода. Каждое значение округляется
   // до целого отдельно, «Итого» — сумма уже округлённых тарифов, поэтому

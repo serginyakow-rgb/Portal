@@ -70,10 +70,10 @@ start.bat admin      :: создать администратора портал
 | Вход | `GET/POST /auth/login` | все |
 | Выход | `POST /auth/logout` | авторизованные |
 | Панель | `GET /dashboard` | авторизованные |
-| Пользователи: список, добавление, форма правки | `GET /auth/users` (`?edit=<id>` — форма правки) | только `admin` |
-| Добавление сотрудника | `POST /auth/register` | только `admin` |
-| Изменение имени и пароля сотрудника | `POST /auth/users/{id}/update` | только `admin` |
-| Удаление сотрудника | `POST /auth/users/{id}/delete` | только `admin` (кроме себя) |
+| Пользователи: список, добавление, форма правки | `GET /settings/users` (`?edit=<id>` — форма правки) | только `admin` |
+| Добавление сотрудника | `POST /settings/users` | только `admin` |
+| Изменение имени и пароля сотрудника | `POST /settings/users/{id}/update` | только `admin` |
+| Удаление сотрудника | `POST /settings/users/{id}/delete` | только `admin` (кроме себя) |
 | Свой профиль | `GET /auth/profile` | авторизованные |
 | Смена собственного пароля | `POST /auth/profile/password` | авторизованные |
 

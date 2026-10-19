@@ -21,7 +21,7 @@ Jinja2, FastAPI и SQLite. Клиентского фреймворка и сбо
 | Шаблоны | Jinja2, `app/templates/` |
 | Статика | `app/static/`, монтируется на `/static` без кэширования |
 | Авторизация | bcrypt + JWT HS256 в httpOnly-cookie `portal_token` |
-| Функциональные модули | `auth`, `calculators`, `templates_db` |
+| Функциональные модули | `auth`, `calculators`, `templates_db`, `settings` |
 | Клиентские скрипты | 8 файлов в `app/static/js/` |
 | Jinja-шаблоны | 17 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
 
@@ -242,10 +242,6 @@ Portal/
 | GET | `/auth/login` | все | `login_form` | `auth/login.html`; уже вошедшего ведёт на `/dashboard` |
 | POST | `/auth/login` | все | `login` | проверка пароля, cookie `portal_token`, `303` на `/dashboard` |
 | POST | `/auth/logout` | авторизован | `logout` | удаление cookie, `303` на `/auth/login` |
-| GET | `/auth/users` | admin | `users_page` | `auth/users.html`; `?edit=<id>` — форма правки |
-| POST | `/auth/register` | admin | `register` | создание сотрудника, `303` на `/auth/users?created=1` |
-| POST | `/auth/users/{user_id}/update` | admin | `users_update` | смена имени и пароля, `303` на `?updated=1` |
-| POST | `/auth/users/{user_id}/delete` | admin | `users_delete` | удаление, кроме себя, `303` на `?deleted=1` |
 | GET | `/auth/profile` | авторизован | `profile_page` | `auth/profile.html` |
 | POST | `/auth/profile/password` | авторизован | `profile_password_change` | смена своего пароля, `303` на `?updated=1` |
 
@@ -280,6 +276,18 @@ Portal/
 | POST | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit` | сохранение, `303` на `?saved=1` |
 | POST | `/templates-db/blocks/{block_id}/delete` | авторизован | `block_delete` | удаление, `303` на `?deleted=1` |
 
+### 5.5. Настройки (`app/modules/settings/routes.py`)
+
+| Метод | Путь | Доступ | Обработчик | Шаблон / результат |
+| --- | --- | --- | --- | --- |
+| GET | `/settings` | admin | `settings_page` | `settings/index.html` — меню разделов настроек |
+| GET | `/settings/users` | admin | `settings_users_page` | `settings/index.html` + `_users_panel.html`; `?edit=<id>` — форма правки |
+| POST | `/settings/users` | admin | `settings_users_create` | создание сотрудника, `303` на `?created=1` |
+| POST | `/settings/users/{user_id}/update` | admin | `settings_users_update` | смена имени и пароля, `303` на `?updated=1` |
+| POST | `/settings/users/{user_id}/delete` | admin | `settings_users_delete` | удаление, кроме себя, `303` на `?deleted=1` |
+| GET | `/settings/backup` | admin | `settings_backup_page` | `settings/section.html` — заглушка |
+| GET | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_page` | `settings/section.html` — заглушка |
+
 ## 6. Связка «шаблон → JavaScript»
 
 `base.html` подключает `app.js` на всех страницах. Остальные скрипты
@@ -288,16 +296,16 @@ Portal/
 | Шаблон | Скрипты |
 | --- | --- |
 | `base.html` | `app.js` (заготовка, логики пока нет) |
-| `auth/login.html`, `auth/users.html`, `auth/profile.html` | нет |
+| `auth/login.html`, `auth/profile.html` | нет |
 | `dashboard/index.html` | нет |
 | `calculators/index.html` | нет |
-| `calculators/raschet_i_sdacha.html` | `money-input.js`, `raschet-i-sdacha.js` |
-| `calculators/kuplya_prodazha.html` | `money-input.js`, `calculators.js` |
-| `calculators/udostoverenie_dkp.html` | `money-input.js`, `udostoverenie-dkp.js` |
-| `calculators/udostoverenie_dareniya.html` | `money-input.js`, `udostoverenie-dareniya.js` |
-| `calculators/vydelenie_doley_msk.html` | `money-input.js`, `vydelenie-doley-msk.js` |
+| `calculators/raschet_i_sdacha.html` | `money-input.js`, `calc-core.js`, `raschet-i-sdacha.js` |
+| `calculators/kuplya_prodazha.html` | `money-input.js`, `calc-core.js`, `calculators.js` |
+| `calculators/udostoverenie_dkp.html` | `money-input.js`, `calc-core.js`, `udostoverenie-dkp.js` |
+| `calculators/udostoverenie_dareniya.html` | `money-input.js`, `calc-core.js`, `udostoverenie-dareniya.js` |
+| `calculators/vydelenie_doley_msk.html` | `money-input.js`, `calc-core.js`, `vydelenie-doley-msk.js` |
 | `calculators/gosposhlina.html` | `money-input.js`; расчёт на сервере |
-| `calculators/_block_template.html` | `money-input.js`, `js/<slug>.js` — эталон, роутом не используется |
+| `calculators/_block_template.html` | `money-input.js`, `calc-core.js`, `js/<slug>.js` — эталон, роутом не используется |
 | `templates_db/index.html` | `templates_db.js` |
 | `templates_db/section_form.html` | `templates_db.js` |
 | `templates_db/block_form.html` | `templates_db.js` |
@@ -308,6 +316,7 @@ Portal/
 | Файл | Ответственность |
 | --- | --- |
 | `money-input.js` | форматирование сумм в полях `[data-money]` неразрывными пробелами |
+| `calc-core.js` | общие помощники: localStorage, разбор чисел и долей, `formatMoney`, `render` |
 | `raschet-i-sdacha.js` | сумма пятнадцати полей в «Итого», Enter — к следующему полю |
 | `calculators.js` | тариф за удостоверение договора купли-продажи (обязательная форма) |
 | `udostoverenie-dkp.js` | тариф за удостоверение ДКП (необязательная форма) |
@@ -318,7 +327,10 @@ Portal/
 
 Скрипты калькуляторов используют IIFE, `"use strict"`, ES5-совместимый
 синтаксис и `localStorage`. Ключи хранения имеют префикс `calculators.*`,
-поэтому данные разных калькуляторов не пересекаются.
+поэтому данные разных калькуляторов не пересекаются. Общие помощники лежат
+в `calc-core.js` и берутся из `window.CalcCore`; иконки и строки статуса —
+макросы `app/templates/_macros.html` (`status_warn`, `status_done`, `icon_*`),
+копии SVG в шаблонах не создаются.
 
 ## 7. Модель данных
 

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon_users, icon_archive, icon_percent %}
+
+{% block title %}Настройки · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Меню настроек — как разделы заготовок на странице «База данных»:
+   светлая колонка .sidebar--light и пункты .menu__item с иконкой и названием #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Настройки</h1>
+    <span class="panel__hint">Параметры портала и справочники</span>
+  </div>
+</section>
+
+<div class="layout">
+  <aside class="sidebar sidebar--light">
+    <nav class="menu">
+      {% if user.role == 'admin' %}
+      <form method="get" action="/settings/users">
+        <button class="menu__item {% if settings_section == 'users' %}is-active{% endif %}" type="submit" title="Сотрудники и доступы">
+          {{ icon_users(20) }}
+          <span class="menu__text">Пользователи</span>
+        </button>
+      </form>
+      {% endif %}
+
+      <form method="get" action="/settings/backup">
+        <button class="menu__item" type="submit" title="Резервная копия базы данных">
+          {{ icon_archive(20) }}
+          <span class="menu__text">Резервное копирование</span>
+        </button>
+      </form>
+
+      <form method="get" action="/settings/inheritance-tariff">
+        <button class="menu__item" type="submit" title="Региональный тариф по наследственным делам">
+          {{ icon_percent(20) }}
+          <span class="menu__text">Региональный тариф для наследства</span>
+        </button>
+      </form>
+    </nav>
+  </aside>
+
+  <div>
+    {% if settings_section == 'users' %}
+    {% include "_users_panel.html" %}
+    {% else %}
+    <section class="panel">
+      <p class="panel__hint">Выберите раздел настроек в меню слева.</p>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

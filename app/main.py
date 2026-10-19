@@ -17,6 +17,7 @@ from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.routes import router as auth_router
 from app.modules.calculators.routes import router as calculators_router
+from app.modules.settings.routes import router as settings_router
 from app.modules.templates_db.routes import router as templates_db_router
 
 
@@ -50,6 +51,7 @@ app.mount("/static", NoCacheStaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
 
 app.include_router(auth_router)
+app.include_router(settings_router)
 app.include_router(calculators_router, prefix="/calculators", tags=["calculators"])
 app.include_router(templates_db_router, prefix="/templates-db")
 

@@ -1,6 +1,6 @@
 {# ШАБЛОН НОВОГО БЛОКА РАЗДЕЛА «КАЛЬКУЛЯТОРЫ» — файл только для копирования.
    Роута у него нет: скопируй в app/templates/calculators/<slug>.html, замени
-   <slug> и подписи, добавь карточку в CALCULATORS (service.py) и маршруты в
+   <slug> и подписи, добавь карточку в CALCULATOR_BLOCKS (service.py) и маршруты в
    routes.py. Полные правила — clinerules/02-calculators.md.
    Скрин-подсказки:
      - подписи полей: 12px --navy, единица измерения через запятую;
@@ -8,6 +8,7 @@
      - кнопки: действие (primary) + «К списку» (ghost) последней;
      - показатели: .label/.value, итог — .value--total, начальные 0&nbsp;₽. #}
 {% extends "base.html" %}
+{% from "_macros.html" import status_warn %}
 
 {% block title %}Короткое название · Нотариальная контора{% endblock %}
 
@@ -22,16 +23,7 @@
   </div>
 
   {% if error %}
-  <p class="status status--warn">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"
-         fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="10"/>
-      <line x1="12" x2="12" y1="8" y2="12"/>
-      <line x1="12" x2="12.01" y1="16" y2="16"/>
-    </svg>
-    {{ error }}
-  </p>
+  {{ status_warn(error) }}
   {% endif %}
 
   <div class="calc">
@@ -80,5 +72,6 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/calc-core.js') }}"></script>
 <script src="{{ url_for('static', path='js/<slug>.js') }}"></script>
 {% endblock %}

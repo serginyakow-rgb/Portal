@@ -8,10 +8,12 @@
 """
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Request, status
+from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.database import get_db
 from app.core.templating import render
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
@@ -32,6 +34,7 @@ from app.modules.calculators.service import (
     format_money,
     list_calculator_blocks,
 )
+from app.modules.settings.service import list_inheritance_tariffs
 
 router = APIRouter(tags=["calculators"])
 
@@ -203,6 +206,33 @@ async def nasledstvo_nedvizhimost_page(request: Request, user: CurrentUser) -> H
         active_menu=MENU_CALCULATORS,
         rates=NASLEDSTVO_RATE_LABELS,
         registry_fees=REGISTRY_FEE_LABELS,
+    )
+
+
+@router.get("/nasledstvo-inoe-imushchestvo", response_class=HTMLResponse, response_model=None)
+async def nasledstvo_inoe_imushchestvo_page(
+    request: Request,
+    user: CurrentUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> HTMLResponse:
+    """Калькулятор нотариального тарифа за выдачу свидетельства о праве на
+    наследство на иное имущество.
+
+    Расчёт выполняет браузер (static/js/nasledstvo-inoe-imushchestvo.js):
+    показатели обновляются сразу при вводе, значения полей сохраняются в
+    localStorage. Ставка федерального тарифа приходит из справочника
+    NASLEDSTVO_RATE_LABELS. Региональный тариф не задаётся в скрипте: строки
+    справочника «Региональный тариф для наследства» (раздел «Настройки»)
+    читаются из базы, выбранная строка подставляет свой тариф в поле
+    «Региональный тариф».
+    """
+    return render(
+        request,
+        "calculators/nasledstvo_inoe_imushchestvo.html",
+        user=user,
+        active_menu=MENU_CALCULATORS,
+        rates=NASLEDSTVO_RATE_LABELS,
+        inheritance_tariffs=await list_inheritance_tariffs(db),
     )
 
 

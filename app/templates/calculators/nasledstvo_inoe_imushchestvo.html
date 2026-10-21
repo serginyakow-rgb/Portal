@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Наследство: иное имущество · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Калькулятор «Свидетельство о праве на наследство на иное имущество»:
+   слева поля ввода, справа показатели. Региональный тариф приходит из
+   справочника «Региональный тариф для наследства» (раздел «Настройки»):
+   строка списка «Выдается свидетельство на:» подставляет тариф из второго
+   столбца справочника в поле «Региональный тариф», а в расчёт он попадает
+   только при заполненной стоимости доли. Расчёт идёт в браузере
+   (static/js/nasledstvo-inoe-imushchestvo.js), введённые значения хранятся в
+   localStorage. Сетка и вид — как у тарифа за удостоверение ДКП
+   (.calc--tariff, kuplya_prodazha.html). #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Нотариальный тариф за выдачу свидетельства о праве на наследство на иное имущество</h1>
+    <span class="panel__hint">Расчёт обновляется при вводе</span>
+  </div>
+
+  <div class="calc calc--tariff">
+    <form class="calc__form" id="nasledstvo-inoe-imushchestvo-form" autocomplete="off">
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-price">Стоимость объекта, ₽</label>
+        <input id="nasledstvo-inoe-imushchestvo-price" name="price" type="text" inputmode="decimal" data-money
+               data-money-decimals="2" placeholder="Например: 1 500 000">
+      </div>
+
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-deceased-share">Доля наследодателя</label>
+        <input id="nasledstvo-inoe-imushchestvo-deceased-share" name="deceased-share" type="text" inputmode="numeric"
+               placeholder="Например: 1/2">
+        <p class="status status--warn" id="nasledstvo-inoe-imushchestvo-deceased-share-error" aria-live="polite"></p>
+      </div>
+
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-heir-share">Доля наследника</label>
+        <input id="nasledstvo-inoe-imushchestvo-heir-share" name="heir-share" type="text" inputmode="numeric"
+               placeholder="Например: 1/2">
+        <p class="status status--warn" id="nasledstvo-inoe-imushchestvo-heir-share-error" aria-live="polite"></p>
+      </div>
+
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-rate">Ставка федерального тарифа</label>
+        <select id="nasledstvo-inoe-imushchestvo-rate" name="rate">
+          {% for value, label in rates.items() %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-asset">Выдается свидетельство на:</label>
+        <select id="nasledstvo-inoe-imushchestvo-asset" name="asset">
+          {% for item in inheritance_tariffs %}
+          <option value="{{ item.id }}" data-rate="{{ item.rate }}">{{ item.asset_type }}</option>
+          {% else %}
+          <option value="" data-rate="0">Справочник пуст</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="nasledstvo-inoe-imushchestvo-regional">Региональный тариф, ₽</label>
+        <input id="nasledstvo-inoe-imushchestvo-regional" name="regional" type="text" inputmode="decimal"
+               data-money data-money-decimals="2" readonly placeholder="Выберите имущество">
+      </div>
+
+      <div class="calc__row">
+        <button class="btn btn--primary" id="nasledstvo-inoe-imushchestvo-reset" type="button">Очистить</button>
+        <a class="btn btn--ghost" href="/calculators/"
+           title="Вернуться к списку калькуляторов">К списку</a>
+      </div>
+    </form>
+
+    <aside class="calc__out">
+      <span class="label">Стоимость доли наследника</span>
+      <span class="value" id="nasledstvo-inoe-imushchestvo-out-share-cost">0&nbsp;₽</span>
+
+      <span class="label">Федеральный тариф</span>
+      <span class="value" id="nasledstvo-inoe-imushchestvo-out-federal">0&nbsp;₽</span>
+
+      <span class="label">Региональный тариф</span>
+      <span class="value" id="nasledstvo-inoe-imushchestvo-out-regional">0&nbsp;₽</span>
+
+      <span class="label">Итого</span>
+      <span class="value value--total" id="nasledstvo-inoe-imushchestvo-out-total">0&nbsp;₽</span>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/money-input.js') }}"></script>
+<script src="{{ url_for('static', path='js/calc-core.js') }}"></script>
+<script src="{{ url_for('static', path='js/nasledstvo-inoe-imushchestvo.js') }}"></script>
+{% endblock %}

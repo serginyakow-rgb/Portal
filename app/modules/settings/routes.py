@@ -24,6 +24,15 @@ from app.modules.auth.service import (
     list_users,
     update_user,
 )
+from app.modules.settings.models import InheritanceTariff
+from app.modules.settings.schemas import InheritanceTariffInput
+from app.modules.settings.service import (
+    create_inheritance_tariff,
+    delete_inheritance_tariff,
+    get_inheritance_tariff,
+    list_inheritance_tariffs,
+    update_inheritance_tariff,
+)
 
 router = APIRouter(tags=["settings"])
 
@@ -35,6 +44,7 @@ MENU_SETTINGS = "settings"
 
 # Выбранный раздел в меню самой страницы настроек
 SETTINGS_USERS = "users"
+SETTINGS_INHERITANCE_TARIFF = "inheritance_tariff"
 
 
 def _render_settings(
@@ -44,6 +54,8 @@ def _render_settings(
     settings_section: str | None = None,
     users: list[User] | None = None,
     edit_user: User | None = None,
+    tariffs: list[InheritanceTariff] | None = None,
+    edit_tariff: InheritanceTariff | None = None,
     error: str | None = None,
     created: bool = False,
     updated: bool = False,
@@ -59,6 +71,8 @@ def _render_settings(
         settings_section=settings_section,
         users=users or [],
         edit_user=edit_user,
+        tariffs=tariffs or [],
+        edit_tariff=edit_tariff,
         error=error,
         created=created,
         updated=updated,
@@ -94,6 +108,33 @@ async def _render_users_section(
         settings_section=SETTINGS_USERS,
         users=await list_users(db),
         edit_user=edit_user,
+        error=error,
+        created=created,
+        updated=updated,
+        deleted=deleted,
+        status_code=status_code,
+    )
+
+
+async def _render_tariffs_section(
+    request: Request,
+    db: AsyncSession,
+    user: User,
+    *,
+    error: str | None = None,
+    edit_tariff: InheritanceTariff | None = None,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    """Рендерит раздел «Региональный тариф для наследства» с актуальным списком строк."""
+    return _render_settings(
+        request,
+        user,
+        settings_section=SETTINGS_INHERITANCE_TARIFF,
+        tariffs=await list_inheritance_tariffs(db),
+        edit_tariff=edit_tariff,
         error=error,
         created=created,
         updated=updated,
@@ -291,12 +332,131 @@ async def settings_backup_page(request: Request, user: AdminUser) -> HTMLRespons
 
 
 @router.get("/settings/inheritance-tariff", response_class=HTMLResponse, response_model=None)
-async def settings_inheritance_tariff_page(request: Request, user: AdminUser) -> HTMLResponse:
-    """Заглушка раздела «Региональный тариф для наследства»."""
-    return render(
+async def settings_inheritance_tariff_page(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    edit: int | None = None,
+) -> HTMLResponse:
+    """Список региональных тарифов внутри настроек: добавление, правка и удаление."""
+    edit_tariff = await get_inheritance_tariff(db, edit) if edit is not None else None
+    if edit is not None and edit_tariff is None:
+        # Ссылка устарела: строку уже удалили
+        return await _render_tariffs_section(
+            request,
+            db,
+            user,
+            error="Строка для изменения не найдена",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return await _render_tariffs_section(
         request,
-        "settings/section.html",
-        user=user,
-        active_menu=MENU_SETTINGS,
-        section_title="Региональный тариф для наследства",
+        db,
+        user,
+        edit_tariff=edit_tariff,
+        created=created,
+        updated=updated,
+        deleted=deleted,
+    )
+
+
+@router.post("/settings/inheritance-tariff", response_class=HTMLResponse, response_model=None)
+async def settings_inheritance_tariff_create(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    asset_type: Annotated[str, Form()],
+    rate: Annotated[str, Form()],
+) -> HTMLResponse | RedirectResponse:
+    """Добавляет строку регионального тарифа и возвращает в раздел настроек."""
+    try:
+        data = InheritanceTariffInput(asset_type=asset_type, rate=rate)
+    except ValidationError as exc:
+        return await _render_tariffs_section(
+            request,
+            db,
+            user,
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    await create_inheritance_tariff(db, data)
+    return RedirectResponse(
+        "/settings/inheritance-tariff?created=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/inheritance-tariff/{tariff_id}/update",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_inheritance_tariff_update(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    tariff_id: int,
+    asset_type: Annotated[str, Form()],
+    rate: Annotated[str, Form()],
+) -> HTMLResponse | RedirectResponse:
+    """Сохраняет правку строки регионального тарифа."""
+    target = await get_inheritance_tariff(db, tariff_id)
+    if target is None:
+        return await _render_tariffs_section(
+            request,
+            db,
+            user,
+            error="Строка тарифа не найдена",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        data = InheritanceTariffInput(asset_type=asset_type, rate=rate)
+    except ValidationError as exc:
+        return await _render_tariffs_section(
+            request,
+            db,
+            user,
+            edit_tariff=target,
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    await update_inheritance_tariff(db, target, data)
+    return RedirectResponse(
+        "/settings/inheritance-tariff?updated=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/inheritance-tariff/{tariff_id}/delete",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_inheritance_tariff_delete(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    tariff_id: int,
+) -> HTMLResponse | RedirectResponse:
+    """Удаляет строку регионального тарифа и возвращает в раздел настроек."""
+    target = await get_inheritance_tariff(db, tariff_id)
+    if target is None:
+        return await _render_tariffs_section(
+            request,
+            db,
+            user,
+            error="Строка тарифа не найдена",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    await delete_inheritance_tariff(db, target)
+    return RedirectResponse(
+        "/settings/inheritance-tariff?deleted=1",
+        status_code=status.HTTP_303_SEE_OTHER,
     )

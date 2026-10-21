@@ -33,7 +33,7 @@
       </form>
 
       <form method="get" action="/settings/inheritance-tariff">
-        <button class="menu__item" type="submit" title="Региональный тариф по наследственным делам">
+        <button class="menu__item {% if settings_section == 'inheritance_tariff' %}is-active{% endif %}" type="submit" title="Региональный тариф по наследственным делам">
           {{ icon_percent(20) }}
           <span class="menu__text">Региональный тариф для наследства</span>
         </button>
@@ -44,6 +44,8 @@
   <div>
     {% if settings_section == 'users' %}
     {% include "_users_panel.html" %}
+    {% elif settings_section == 'inheritance_tariff' %}
+    {% include "_inheritance_tariff_panel.html" %}
     {% else %}
     <section class="panel">
       <p class="panel__hint">Выберите раздел настроек в меню слева.</p>

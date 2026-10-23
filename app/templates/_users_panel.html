@@ -32,7 +32,7 @@
         <tr>
           <th>Имя (логин)</th>
           <th>Роль</th>
-          <th>Пароль</th>
+          <th>Метка</th>
           <th>Создан</th>
           <th>Действия</th>
         </tr>
@@ -42,7 +42,13 @@
         <tr>
           <td>{{ item.full_name }}{% if item.id == user.id %} (это вы){% endif %}</td>
           <td>{{ role_labels.get(item.role, item.role) }}</td>
-          <td class="mono">{{ item.password_plain or '—' }}</td>
+          {# Метка сотрудника: цвет берётся из marker_color; fill — атрибут SVG, не inline-стиль #}
+          <td>
+            <svg width="18" height="18" viewBox="0 0 18 18" role="img"
+                 aria-label="Цвет метки {{ item.marker_color }}">
+              <rect width="18" height="18" rx="4" fill="{{ item.marker_color }}"></rect>
+            </svg>
+          </td>
           <td class="mono">{{ item.created_at.strftime('%d.%m.%Y') }}</td>
           <td>
             {% if edit_user and edit_user.id == item.id %}
@@ -63,7 +69,7 @@
   <div class="panel__head">
     {% if edit_user %}
     <h1 class="panel__title">Изменение сотрудника: {{ edit_user.full_name }}</h1>
-    <span class="panel__hint">Пароль виден нотариусу портала</span>
+    <span class="panel__hint">Пароль показать нельзя: его можно только задать заново</span>
     {% else %}
     <h1 class="panel__title">Новый сотрудник</h1>
     <span class="panel__hint">Доступно нотариусу портала</span>
@@ -81,7 +87,7 @@
 
     <div class="field">
       <label for="edit_password">Пароль</label>
-      <input id="edit_password" name="password" type="text" value="{{ edit_user.password_plain or '' }}"
+      <input id="edit_password" name="password" type="text" value=""
              autocomplete="off" placeholder="Оставьте без изменений, если пароль менять не нужно">
     </div>
 
@@ -91,9 +97,11 @@
              disabled>
     </div>
 
-    {% if not edit_user.password_plain %}
-    {{ status_warn("Пароль задан до появления просмотра — введите новый, чтобы увидеть его в списке.") }}
-    {% endif %}
+    <div class="field">
+      <label for="edit_marker_color">Цвет метки</label>
+      <input id="edit_marker_color" name="marker_color" type="color"
+             value="{{ edit_user.marker_color }}">
+    </div>
 
     <div class="calc__row">
       <button class="btn btn--primary" type="submit">Сохранить изменения</button>
@@ -131,6 +139,12 @@
         <option value="user">{{ role_labels.get('user', 'Сотрудник') }}</option>
         <option value="admin">{{ role_labels.get('admin', 'Нотариус') }}</option>
       </select>
+    </div>
+
+    <div class="field">
+      <label for="marker_color">Цвет метки</label>
+      <input id="marker_color" name="marker_color" type="color"
+             value="{{ default_marker_color }}">
     </div>
 
     <div class="calc__row">

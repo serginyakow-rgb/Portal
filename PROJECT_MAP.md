@@ -59,8 +59,8 @@ flowchart LR
 Ключевые правила:
 
 - Роутеры подключаются только в `app/main.py`; префиксы задаются там же:
-  `auth` — `/auth`, `calculators` — `/calculators`, `templates_db` —
-  `/templates-db`.
+  `auth` — `/auth`, `calculators` — `/calculators`, `tasks` — `/tasks`,
+  `templates_db` — `/templates-db`.
 - Все страницы рендерятся через `render()` из `app/core/templating.py`, который
   добавляет `user`, `initials`, `role_label`, `role_labels`, `active_menu`.
 - Модели импортируются в `app/main.py` до `Base.metadata.create_all`, иначе
@@ -86,12 +86,14 @@ Portal/
 │   ├── modules/
 │   │   ├── auth/                пользователи, вход, роли, профиль
 │   │   ├── calculators/         каталог и страницы калькуляторов
+│   │   ├── tasks/               раздел «Задачи» (страница-заглушка)
 │   │   └── templates_db/        база заготовок: разделы, теги, блоки
 │   ├── templates/
 │   │   ├── base.html            общий каркас, шапка, меню, блок scripts
 │   │   ├── auth/                login.html, users.html, profile.html
 │   │   ├── dashboard/           index.html
 │   │   ├── calculators/         index + 6 страниц + _block_template.html
+│   │   ├── tasks/               index.html — раздел «Задачи»
 │   │   └── templates_db/        index, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
@@ -244,6 +246,7 @@ Portal/
 | POST | `/auth/logout` | авторизован | `logout` | удаление cookie, `303` на `/auth/login` |
 | GET | `/auth/profile` | авторизован | `profile_page` | `auth/profile.html` |
 | POST | `/auth/profile/password` | авторизован | `profile_password_change` | смена своего пароля, `303` на `?updated=1` |
+| POST | `/auth/profile/marker-color` | авторизован | `profile_marker_color_change` | смена цвета своей метки, `303` на `?color=1` |
 
 ### 5.3. Калькуляторы (`app/modules/calculators/routes.py`)
 
@@ -287,6 +290,12 @@ Portal/
 | POST | `/settings/users/{user_id}/delete` | admin | `settings_users_delete` | удаление, кроме себя, `303` на `?deleted=1` |
 | GET | `/settings/backup` | admin | `settings_backup_page` | `settings/section.html` — заглушка |
 | GET | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_page` | `settings/section.html` — заглушка |
+
+### 5.6. Задачи (`app/modules/tasks/routes.py`)
+
+| Метод | Путь | Доступ | Обработчик | Шаблон / результат |
+| --- | --- | --- | --- | --- |
+| GET | `/tasks/` | авторизован | `index_page` | `tasks/index.html` — заголовок «Задачи», функционал появится позже |
 
 ## 6. Связка «шаблон → JavaScript»
 

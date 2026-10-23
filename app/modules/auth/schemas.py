@@ -5,12 +5,16 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.core.security import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
+from app.modules.auth.models import DEFAULT_MARKER_COLOR
 
 # Имя пользователя — только русские буквы, пробел и дефис
 NAME_PATTERN = re.compile(r"^[А-Яа-яЁё][А-Яа-яЁё\s-]*$")
 
 # Поддерживаемые роли портала
 ALLOWED_ROLES = {"admin", "user"}
+
+# Цвет метки сотрудника: HEX-код вида #0A2A4D
+MARKER_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # Границы длины имени (ФИО)
 MIN_NAME_LENGTH = 2
@@ -50,6 +54,21 @@ class _NameForm(BaseModel):
         return cleaned
 
 
+class _MarkerColorForm(BaseModel):
+    """Цвет метки сотрудника: отличительный цвет в списках портала."""
+
+    marker_color: str = DEFAULT_MARKER_COLOR
+
+    @field_validator("marker_color")
+    @classmethod
+    def validate_marker_color(cls, value: str) -> str:
+        """Принимает только HEX вида #0A2A4D; регистр приводится к верхнему."""
+        cleaned = value.strip().upper()
+        if not MARKER_COLOR_PATTERN.match(cleaned):
+            raise ValueError("Цвет метки задаётся кодом вида #0A2A4D")
+        return cleaned
+
+
 class LoginForm(_NameForm):
     """Данные формы входа в портал: имя на русском и пароль."""
 
@@ -62,7 +81,7 @@ class LoginForm(_NameForm):
         return _check_password_bounds(value)
 
 
-class UserCreate(LoginForm):
+class UserCreate(_MarkerColorForm, LoginForm):
     """Данные для добавления пользователя администратором."""
 
     role: str = "user"
@@ -80,7 +99,7 @@ class UserNameUpdate(_NameForm):
     """Смена имени пользователя: администратором в разделе «Пользователи»."""
 
 
-class AdminUserUpdate(UserNameUpdate):
+class AdminUserUpdate(_MarkerColorForm, UserNameUpdate):
     """Правка сотрудника администратором: имя и, при необходимости, новый пароль."""
 
     password: str = ""
@@ -119,6 +138,10 @@ class PasswordChange(BaseModel):
         if self.new_password != self.new_password_repeat:
             raise ValueError("Новый пароль и подтверждение не совпадают")
         return self
+
+
+class ProfileMarkerColor(_MarkerColorForm):
+    """Смена сотрудником цвета собственной метки в профиле."""
 
 
 class UserRead(BaseModel):

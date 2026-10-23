@@ -6,6 +6,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
+# Цвет метки по умолчанию: фирменный тёмно-синий (--navy в styles.css).
+# Метка — отличительный цвет сотрудника в списках портала.
+DEFAULT_MARKER_COLOR = "#0A2A4D"
+
 
 class User(Base):
     """Сотрудник портала. Логином служит имя (ФИО) на русском языке."""
@@ -19,9 +23,13 @@ class User(Base):
     # Ключ имени: регистр и повторные пробелы приведены к единому виду (защита от дублей)
     name_key: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Пароль в открытом виде: администратор должен видеть, какой пароль выдан сотруднику.
+    # Пароль в открытом виде: в интерфейсе не показывается, хранится для совместимости.
     # У старых записей поле пустое: им пароль выдают заново в разделе «Пользователи».
     password_plain: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Цвет метки сотрудника в HEX-виде (#0A2A4D): отличительная черта в списках портала
+    marker_color: Mapped[str] = mapped_column(
+        String(7), default=DEFAULT_MARKER_COLOR, nullable=False
+    )
 
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

@@ -15,9 +15,9 @@ from app.core.security import (
 )
 from app.core.templating import MENU_PROFILE, render
 from app.modules.auth.dependencies import CurrentUser, OptionalUser
-from app.modules.auth.models import User
-from app.modules.auth.schemas import LoginForm, PasswordChange
-from app.modules.auth.service import authenticate_user, set_password
+from app.modules.auth.models import DEFAULT_MARKER_COLOR, User
+from app.modules.auth.schemas import LoginForm, PasswordChange, ProfileMarkerColor
+from app.modules.auth.service import authenticate_user, set_marker_color, set_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -52,6 +52,7 @@ def _render_profile(
     *,
     error: str | None = None,
     updated: bool = False,
+    color_updated: bool = False,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
     """Рендерит страницу профиля сотрудника."""
@@ -62,6 +63,7 @@ def _render_profile(
         active_menu=MENU_PROFILE,
         error=error,
         updated=updated,
+        color_updated=color_updated,
         status_code=status_code,
     )
 
@@ -116,9 +118,11 @@ async def logout() -> RedirectResponse:
 
 
 @router.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request, user: CurrentUser, updated: bool = False) -> HTMLResponse:
-    """Профиль сотрудника: имя меняет администратор, себе сотрудник меняет только пароль."""
-    return _render_profile(request, user, updated=updated)
+async def profile_page(
+    request: Request, user: CurrentUser, updated: bool = False, color: bool = False
+) -> HTMLResponse:
+    """Профиль сотрудника: имя меняет администратор, пароль и метку сотрудник — сам."""
+    return _render_profile(request, user, updated=updated, color_updated=color)
 
 
 @router.post("/profile/password", response_class=HTMLResponse, response_model=None)
@@ -155,3 +159,27 @@ async def profile_password_change(
 
     await set_password(db, user, data.new_password)
     return RedirectResponse("/auth/profile?updated=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/profile/marker-color", response_class=HTMLResponse, response_model=None)
+async def profile_marker_color_change(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    marker_color: Annotated[str, Form()] = DEFAULT_MARKER_COLOR,
+) -> HTMLResponse | RedirectResponse:
+    """Меняет цвет метки текущего сотрудника: им он отмечен в списках портала."""
+    try:
+        data = ProfileMarkerColor(marker_color=marker_color)
+    except ValidationError as exc:
+        return _render_profile(
+            request,
+            user,
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Совпадающий цвет не переписываем: лишняя запись в БД сотруднику не нужна
+    if user.marker_color != data.marker_color:
+        await set_marker_color(db, user, data.marker_color)
+    return RedirectResponse("/auth/profile?color=1", status_code=status.HTTP_303_SEE_OTHER)

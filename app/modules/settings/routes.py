@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.templating import render
 from app.modules.auth.dependencies import require_role
-from app.modules.auth.models import User
+from app.modules.auth.models import DEFAULT_MARKER_COLOR, User
 from app.modules.auth.schemas import AdminUserUpdate, UserCreate, name_key
 from app.modules.auth.service import (
     create_user,
@@ -22,6 +22,7 @@ from app.modules.auth.service import (
     get_user_by_id,
     get_user_by_name,
     list_users,
+    set_marker_color,
     update_user,
 )
 from app.modules.settings.models import InheritanceTariff
@@ -79,6 +80,7 @@ def _render_settings(
         deleted=deleted,
         users_url="/settings/users",
         create_url="/settings/users",
+        default_marker_color=DEFAULT_MARKER_COLOR,
         status_code=status_code,
     )
 
@@ -189,10 +191,13 @@ async def settings_users_create(
     full_name: Annotated[str, Form()],
     password: Annotated[str, Form()],
     role: Annotated[str, Form()] = "user",
+    marker_color: Annotated[str, Form()] = DEFAULT_MARKER_COLOR,
 ) -> HTMLResponse | RedirectResponse:
     """Добавляет сотрудника, оставаясь в разделе настроек после успеха."""
     try:
-        data = UserCreate(full_name=full_name, password=password, role=role)
+        data = UserCreate(
+            full_name=full_name, password=password, role=role, marker_color=marker_color
+        )
     except ValidationError as exc:
         return await _render_users_section(
             request,
@@ -235,6 +240,7 @@ async def settings_users_update(
     user_id: int,
     full_name: Annotated[str, Form()],
     password: Annotated[str, Form()] = "",
+    marker_color: Annotated[str, Form()] = DEFAULT_MARKER_COLOR,
 ) -> HTMLResponse | RedirectResponse:
     """Сохраняет правку сотрудника и возвращает в список внутри настроек."""
     target = await get_user_by_id(db, user_id)
@@ -248,7 +254,9 @@ async def settings_users_update(
         )
 
     try:
-        data = AdminUserUpdate(full_name=full_name, password=password)
+        data = AdminUserUpdate(
+            full_name=full_name, password=password, marker_color=marker_color
+        )
     except ValidationError as exc:
         return await _render_users_section(
             request,
@@ -273,6 +281,8 @@ async def settings_users_update(
 
     try:
         await update_user(db, target, full_name=data.full_name, password=data.password)
+        if target.marker_color != data.marker_color:
+            await set_marker_color(db, target, data.marker_color)
     except IntegrityError:
         # Страховка от гонки, если то же имя занял другой сотрудник
         await db.rollback()

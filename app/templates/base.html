@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=2">
 </head>
 <body>
-  {% from "_macros.html" import icon_settings %}
+  {% from "_macros.html" import icon_settings, icon_tasks %}
   <div class="app">
     <header class="header">
       <div class="header__brand">
@@ -65,6 +65,13 @@
                 <path d="M8 18h.01"/>
               </svg>
               <span class="menu__text">Калькуляторы</span>
+            </button>
+          </form>
+
+          <form method="get" action="/tasks/">
+            <button class="menu__item {% if active_menu == 'tasks' %}is-active{% endif %}" type="submit">
+              {{ icon_tasks(20) }}
+              <span class="menu__text">Задачи</span>
             </button>
           </form>
 

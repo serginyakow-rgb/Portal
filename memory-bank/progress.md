@@ -196,6 +196,22 @@
    в `origin/main`; `git ls-remote origin main` совпал с локальной веткой,
    после коммита рабочее дерево чистое, в индексе 84 файла.
 
+16. Пункт меню «Задачи» и страница раздела (23.10.2026): в `base.html`
+   после «Калькуляторов» добавлен пункт «Задачи» (иконка `icon_tasks`
+   в `_macros.html`), создан модуль `app/modules/tasks/` с маршрутом
+   `GET /tasks/` (`MENU_TASKS`, `CurrentUser`) и шаблон `tasks/index.html`
+   с заголовком «Задачи»; роутер подключён в `app/main.py` с префиксом
+   `/tasks`. В тот же день в «Мой профиль» добавлено поле «Цвет метки»
+   (`POST /auth/profile/marker-color`, схема `ProfileMarkerColor` поверх
+   общего валидатора `_MarkerColorForm`), свотч 18×18 — как метка
+   в списке сотрудников. Документация: `PROJECT_MAP.md`,
+   `productContext.md`. Проверки: `py_compile` — чисто; HTTP —
+   `/tasks/` 200 с заголовком «Задачи», пункт меню активен и стоит после
+   «Калькуляторов», на `/calculators/` «Задачи» не подсвечены,
+   `/dashboard`, `/auth/profile`, `/settings/users` — 200, `/tasks` →
+   307 на `/tasks/`, без cookie → 303 на `/auth/login`. Сервер
+   перезапущен (PID 13728).
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

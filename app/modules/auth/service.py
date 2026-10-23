@@ -37,6 +37,7 @@ async def create_user(db: AsyncSession, data: UserCreate) -> User:
         name_key=name_key(data.full_name),
         hashed_password=hash_password(data.password),
         password_plain=data.password,
+        marker_color=data.marker_color,
         role=data.role,
     )
     db.add(user)
@@ -55,9 +56,17 @@ async def rename_user(db: AsyncSession, user: User, full_name: str) -> User:
 
 
 async def set_password(db: AsyncSession, user: User, password: str) -> User:
-    """Задаёт пароль: хранится bcrypt-хеш (для входа) и сам пароль (для просмотра админом)."""
+    """Задаёт пароль: для входа хранится bcrypt-хеш, открытый текст — только в БД."""
     user.hashed_password = hash_password(password)
     user.password_plain = password
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def set_marker_color(db: AsyncSession, user: User, marker_color: str) -> User:
+    """Задаёт цвет метки сотрудника: отличительная черта в списках портала."""
+    user.marker_color = marker_color
     await db.commit()
     await db.refresh(user)
     return user

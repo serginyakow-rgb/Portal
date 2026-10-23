@@ -472,12 +472,35 @@ button { font-family: inherit; }
   border-color: var(--navy);
   box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
 }
+/* Метка сотрудника в формах раздела «Пользователи»: поле цвета повторяет метку
+   из списка (.table svg rect) — квадрат 18×18 со скруглением 4px. Ширину 100%
+   и padding общего правила .field input снимаем: это не поле ввода текста.
+   Рамки нет намеренно: при box-sizing: border-box она сузила бы цветной
+   квадрат до 16×16 и метка в форме отличалась бы от метки в таблице. */
+.field input[type="color"] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+/* Внутренний образец цвета (Chrome/Edge и Firefox): без рамки и с тем же
+   скруглением, иначе углы в форме выглядят иначе, чем у метки в списке. */
+.field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.field input[type="color"]::-moz-color-swatch { border: 0; border-radius: 4px; }
 /* Раздел «Мой профиль»: все поля ввода — шириной 350px, как рабочие столбцы
    калькуляторов. Класс .panel--profile ставится только на панель профиля
    (auth/profile.html), поэтому формы других разделов (.calc__form) не
    затрагиваются. max-width: 100% — страховка на узких экранах: поле не
    выходит за пределы панели. */
 .panel--profile .field input { width: 350px; max-width: 100%; }
+/* Исключение: поле цвета метки в профиле остаётся квадратом 18×18 — того же
+   размера, что метка в списках сотрудников. Без этого правила селектор выше
+   (та же специфичность, но ниже по файлу) растянул бы его до 350px. */
+.panel--profile .field input[type="color"] { width: 18px; }
 /* Содержимое блока показателей прижато к верхнему краю. У формы (.calc__form)
    и у блока одинаковый padding 18px, поэтому подпись первого показателя —
    «Федеральный тариф» — стоит на одной линии с подписью первого поля ввода.

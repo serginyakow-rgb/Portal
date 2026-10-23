@@ -41,5 +41,23 @@
       <span class="panel__hint">Имя для входа меняет только администратор; сессия остаётся активной</span>
     </div>
   </form>
+
+  {% if color_updated %}
+  {{ status_done("Цвет метки сохранён.") }}
+  {% endif %}
+
+  {# Метка сотрудника: поле цвета того же размера, что метка в списках
+     (18×18, скругление 4px) — размеры задаёт .field input[type="color"]. #}
+  <form class="calc__form" method="post" action="/auth/profile/marker-color">
+    <div class="field">
+      <label for="marker_color">Цвет метки</label>
+      <input id="marker_color" name="marker_color" type="color" value="{{ user.marker_color }}">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Сохранить метку</button>
+      <span class="panel__hint">Этим цветом вы отмечены в списках сотрудников</span>
+    </div>
+  </form>
 </section>
 {% endblock %}

@@ -333,8 +333,66 @@ button { font-family: inherit; }
 .panel--db-search > .panel__head { margin-bottom: 4px; }
 .panel--db-search > .calc__form { padding: 6px 18px 0; }
 
-/* Карточка дела: молочный фон, тонкая (1px) тёмно-синяя рамка, лёгкая тень */
+/* Раздел «Задачи»: шапка панели несёт заголовок, кнопку «Новая карточка»
+   и фильтр по исполнителю — всё в одной строке. Кнопка стоит сразу
+   за заголовком и по высоте не отличается от «Показать» (.btn, 41px);
+   фильтр прижат к правому краю, поэтому при нехватке места переносится
+   на новую строку целиком (flex-wrap) */
+.panel--tasks { padding-bottom: 12px; }
+.panel--tasks > .panel__head {
+  margin-bottom: 4px;
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Кнопки шапки: ссылка-кнопка наследует line-height страницы (1.5), из-за чего
+   на 2px выше <button> (у него line-height: normal). Выравниваем все кнопки
+   строки по «Показать» — иначе «Новая карточка» и «Сброс» были бы 43px
+   против 41px у «Показать» */
+.panel--tasks > .panel__head .btn { line-height: normal; }
+
+/* Фильтр в шапке: подпись слева от списка, список 200px и две кнопки.
+   Стили списка повторяют .field select — в шапке нет обёртки .field.
+   flex-wrap нужен для телефона: пара «список + Показать» шире панели,
+   без переноса фильтр вылезал бы за её правый край */
+.tasks-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.tasks-filter label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  color: var(--navy);
+}
+.tasks-filter select {
+  width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.tasks-filter select:focus {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
+}
+
+/* Уведомления о сохранении и ошибках идут под шапкой */
+.panel--tasks > .status { margin-top: 12px; }
+
+/* Карточка дела: молочный фон, тонкая (1px) тёмно-синяя рамка, лёгкая тень.
+   position: relative — якорь для метки исполнителя (.card__marker) */
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -356,13 +414,22 @@ button { font-family: inherit; }
 .card__foot .btn { padding: 5px 9px; }
 .card__foot .btn svg { width: 13px; height: 13px; }
 
-.card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.card__no {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .6px;
-  color: var(--navy);
+/* Метка исполнителя на левой грани карточки «Задач»: полоса 3px со
+   скруглением справа — тот же приём, что у активного пункта меню
+   (.menu__item::before). Цвет — marker_color исполнителя; он приходит
+   атрибутом fill, потому что inline-стили в шаблонах запрещены (так же
+   выводится метка сотрудника в «Пользователях»). Карточка без исполнителя
+   полосы не получает. Полоса декоративная: клики и перетаскивание идут
+   сквозь неё (pointer-events: none) */
+.card__marker {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 3px;
+  height: calc(100% - 16px);
+  pointer-events: none;
 }
+
 .card__title { font-size: 14.5px; font-weight: 600; color: var(--text); }
 .card__meta { font-size: 12.5px; color: var(--muted); }
 .card__foot {
@@ -904,6 +971,142 @@ button { font-family: inherit; }
 }
 .workspace::-webkit-scrollbar-thumb:hover,
 .chat__messages::-webkit-scrollbar-thumb:hover { background: var(--navy); background-clip: content-box; }
+
+/* ==========================================================================
+   Задачи: канбан-доска, чек-лист, модальное окно
+   ========================================================================== */
+
+/* Доска — четыре столбца по числу статусов (STATUS_ORDER). Ширина столбцов
+   подстраивается под экран; на узком месте появляется горизонтальная
+   прокрутка самих столбцов, карточки при этом не сжимаются. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+  padding: 22px 28px;
+  border-bottom: 1px solid var(--divider);
+  overflow-x: auto;
+}
+
+.board__column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+}
+
+.board__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--divider);
+}
+
+/* Заголовок столбца — как подпись поля в форме (.field label): 12px, 600 */
+.board__title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+
+.board__count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Приёмник перетаскивания: минимальная высота держит полосу видимой,
+   чтобы карточку можно было бросить и в пустой столбец. Подсветку
+   рамкой ставит js/tasks.js классом .is-over */
+.board__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 56px;
+  border-radius: var(--radius);
+  outline: 2px dashed transparent;
+  outline-offset: 2px;
+  transition: outline-color .15s ease;
+}
+.board__cards.is-over { outline-color: var(--gold); }
+
+/* Карточка на доске — не ссылка: курсор «взять», а не «рука».
+   Подъём при наведении отменён: под курсором он мешал бы перетаскиванию */
+.board__card { cursor: grab; }
+.board__card:hover { transform: none; }
+.board__card.is-dragging { opacity: .45; cursor: grabbing; }
+
+/* Чек-лист карточки: пункты — обычный текст, а не подпись поля. Без этих
+   правил .field label (12px, 600, тёмно-синий) делал бы пункты похожими
+   на заголовки, а width: 100% у .field input растягивал бы чекбоксы */
+.checklist { display: flex; flex-direction: column; gap: 6px; }
+
+.field .checklist__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.field .checklist__item input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  flex: none;
+  accent-color: var(--navy);
+  cursor: pointer;
+}
+
+/* Модальное окно создания карточки и окно подтверждения удаления.
+   Положение и затемнение страницы задаёт сам <dialog> и его ::backdrop */
+.modal {
+  width: min(560px, calc(100% - 32px));
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--navy);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+.modal::backdrop { background: rgba(10, 42, 77, .45); }
+.modal > .calc__form { gap: 12px; }
+.modal .panel__head { margin-bottom: 0; }
+
+/* Окно подтверждения: формы внутри нет, отступы задаёт само окно */
+.modal--confirm {
+  width: min(420px, calc(100% - 32px));
+  padding: 18px;
+}
+.modal--confirm > .calc__row { margin-top: 14px; }
+
+/* На узком экране столбцы фиксированной ширины: доска прокручивается
+   по горизонтали, а карточки не сжимаются до нечитаемого вида */
+@media (max-width: 1100px) {
+  .board { grid-template-columns: repeat(4, 260px); }
+}
+
+@media (max-width: 900px) {
+  .board { padding-left: 16px; padding-right: 16px; }
+}
 
 /* ==========================================================================
    Адаптивность

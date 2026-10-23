@@ -21,9 +21,9 @@ Jinja2, FastAPI и SQLite. Клиентского фреймворка и сбо
 | Шаблоны | Jinja2, `app/templates/` |
 | Статика | `app/static/`, монтируется на `/static` без кэширования |
 | Авторизация | bcrypt + JWT HS256 в httpOnly-cookie `portal_token` |
-| Функциональные модули | `auth`, `calculators`, `templates_db`, `settings` |
-| Клиентские скрипты | 8 файлов в `app/static/js/` |
-| Jinja-шаблоны | 17 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
+| Функциональные модули | `auth`, `calculators`, `templates_db`, `tasks`, `settings` |
+| Клиентские скрипты | 13 файлов в `app/static/js/` |
+| Jinja-шаблоны | 27 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
 
 ## 2. Слои и направление зависимостей
 
@@ -86,14 +86,14 @@ Portal/
 │   ├── modules/
 │   │   ├── auth/                пользователи, вход, роли, профиль
 │   │   ├── calculators/         каталог и страницы калькуляторов
-│   │   ├── tasks/               раздел «Задачи» (страница-заглушка)
+│   │   ├── tasks/               раздел «Задачи»: карточки канбан-доски
 │   │   └── templates_db/        база заготовок: разделы, теги, блоки
 │   ├── templates/
 │   │   ├── base.html            общий каркас, шапка, меню, блок scripts
 │   │   ├── auth/                login.html, users.html, profile.html
 │   │   ├── dashboard/           index.html
 │   │   ├── calculators/         index + 6 страниц + _block_template.html
-│   │   ├── tasks/               index.html — раздел «Задачи»
+│   │   ├── tasks/               index.html — доска, form.html — карточка, _form_fields.html — поля
 │   │   └── templates_db/        index, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
@@ -295,7 +295,45 @@ Portal/
 
 | Метод | Путь | Доступ | Обработчик | Шаблон / результат |
 | --- | --- | --- | --- | --- |
-| GET | `/tasks/` | авторизован | `index_page` | `tasks/index.html` — заголовок «Задачи», функционал появится позже |
+| GET | `/tasks/` | авторизован | `index_page` | `tasks/index.html` — доска, фильтр `?assignee=`, корзина |
+| GET | `/tasks/create` | авторизован | `task_create_form` | `tasks/form.html` — новая карточка (`?card_type=`) |
+| POST | `/tasks/create` | авторизован | `task_create` | создание в конец «На очереди», `303` на `?saved=1` |
+| GET | `/tasks/update/{task_id}` | авторизован | `task_edit_form` | `tasks/form.html` с текущими значениями; нет карточки — доска `404` |
+| POST | `/tasks/update/{task_id}` | авторизован | `task_update` | сохранение полей (столбец не меняется), `303` на `?saved=1` |
+| POST | `/tasks/delete/{task_id}` | авторизован | `task_delete` | в корзину (`deleted_at`), `303` на `?deleted=1` |
+| POST | `/tasks/restore/{task_id}` | авторизован | `task_restore` | из корзины в конец столбца, `303` на `?restored=1` |
+| POST | `/tasks/purge/{task_id}` | авторизован | `task_purge` | окончательное удаление только из корзины (иначе `400`) |
+| POST | `/tasks/move/{task_id}` | авторизован | `task_move` | JSON `{status, position}` → `{"ok": true}`; нет карточки — `404` |
+
+Доска и корзина собираются сервисом (`list_board`, `group_by_status`,
+`list_trash`, `count_trash`), список сотрудников для фильтра и поля
+«Выполняет» отдаёт `auth.service.list_users`. Модели auth модуль не
+импортирует. Чек-лист приходит повторяющимся полем `checklist`
+(`{пункт: True}`), пункты чужого типа отбрасывает схема `TaskCreate`.
+
+Поля карточки вынесены в общий `tasks/_form_fields.html`: его подключают
+и `tasks/form.html`, и модальное окно доски, поэтому набор и порядок полей
+задан один раз. Контекст доски дополняют `default_card_type` (тип по
+умолчанию для модалки) и `deleted_at` в `TaskListItem` (дата удаления
+в корзине).
+
+На карточке доски и в корзине показываются только заголовок, контакт, срок
+и исполнитель: тип карточки и её номер из вывода убраны. Вместо них левая
+грань карточки несёт метку исполнителя — полосу 3px со скруглением справа
+(тот же приём, что у активного пункта меню). Цвет полосы — `marker_color`
+сотрудника: сервис кладёт его в `TaskListItem.assignee_color`, шаблон
+выводит inline-SVG `.card__marker` с `<rect fill="…">` (inline-стили
+в шаблонах запрещены — так же выводится метка в `_users_panel.html`).
+У карточки без исполнителя полосы нет.
+
+Доска работает и без JS: «Новая карточка» ведёт на `/tasks/create`,
+карточки открываются на правку. `app/static/js/tasks.js` добавляет
+перетаскивание между столбцами (HTML5 DnD → `POST /tasks/move/{id}`
+с `{status, position}`, при ошибке — перезагрузка доски), модальное окно
+создания, перерисовку чек-листа при смене типа и своё окно подтверждения
+для форм с `data-confirm`. Наборы пунктов чек-листа скрипт берёт из атрибута
+`data-task-checklists` контейнера `[data-task-checklist]`
+(`checklists|tojson|forceescape`) — второй копии списка в JavaScript нет.
 
 ## 6. Связка «шаблон → JavaScript»
 
@@ -319,6 +357,8 @@ Portal/
 | `templates_db/section_form.html` | `templates_db.js` |
 | `templates_db/block_form.html` | `templates_db.js` |
 | `templates_db/block_view.html` | `templates_db.js` |
+| `tasks/index.html` | `tasks.js` |
+| `tasks/form.html` | `tasks.js` |
 
 Назначение клиентских файлов:
 
@@ -332,6 +372,7 @@ Portal/
 | `udostoverenie-dareniya.js` | тариф за удостоверение договора дарения |
 | `vydelenie-doley-msk.js` | подбор долей по МСК, стоимость доли и нотариальный тариф |
 | `templates_db.js` | копирование текста, поиск по Tab, подтверждение удаления |
+| `tasks.js` | доска «Задачи»: перетаскивание, модалка создания, чек-лист по типу, подтверждение удаления |
 | `app.js` | зарезервирован под общую логику портала |
 
 Скрипты калькуляторов используют IIFE, `"use strict"`, ES5-совместимый

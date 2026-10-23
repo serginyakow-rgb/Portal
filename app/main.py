@@ -18,6 +18,7 @@ from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.routes import router as auth_router
 from app.modules.calculators.routes import router as calculators_router
 from app.modules.settings.routes import router as settings_router
+from app.modules.tasks import models as tasks_models  # noqa: F401 (таблица tasks)
 from app.modules.tasks.routes import router as tasks_router
 from app.modules.templates_db.routes import router as templates_db_router
 

@@ -128,7 +128,7 @@ HTML-разметка шаблонов ОБЯЗАНА использовать �
 .layout, .sidebar, .sidebar__label, .menu, .menu__item,
 .menu__text, .menu__count, .sidebar__footer, .dot-live,
 .workspace, .panel, .panel__head, .panel__title, .panel__hint,
-.cards, .card, .card__top, .card__no, .card__title, .card__meta,
+.cards, .card, .card__marker, .card__title, .card__meta,
 .card__foot, .status, .status--done, .status--warn, .status--progress,
 .table-wrap, .table, .mono,
 .btn, .btn--primary, .btn--ghost,

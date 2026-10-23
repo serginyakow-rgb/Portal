@@ -1,0 +1,69 @@
+{# Поля карточки раздела «Задачи» — общая разметка страницы создания/правки
+   (tasks/form.html) и модального окна на доске (tasks/index.html).
+   Подключается директивой include и читает значения из контекста:
+   card_types, card_type, title, contact, due_date, assignee_id, users,
+   description, checklists, checklist, default_card_type.
+   На доске title, contact, due_date и description не переданы — поля пустые,
+   а тип карточки берётся из default_card_type. #}
+{% set form_card_type = card_type or default_card_type %}
+{% set form_checklist = checklist or {} %}
+
+<div class="field">
+  <label for="card_type">Тип карточки</label>
+  <select id="card_type" name="card_type" required data-task-type>
+    {% for value, label in card_types.items() %}
+    <option value="{{ value }}"{% if value == form_card_type %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="field">
+  <label for="title">Заголовок карточки</label>
+  <input id="title" name="title" type="text" value="{{ title }}" required maxlength="200"
+         autocomplete="off" placeholder="Например: Договор дарения квартиры">
+</div>
+
+<div class="field">
+  <label for="contact">Контакт</label>
+  <input id="contact" name="contact" type="text" value="{{ contact }}" autocomplete="off"
+         placeholder="Телефон или имя клиента">
+</div>
+
+<div class="field">
+  <label for="due_date">Срок</label>
+  <input id="due_date" name="due_date" type="date" value="{{ due_date }}">
+</div>
+
+<div class="field">
+  <label for="assignee_id">Выполняет</label>
+  <select id="assignee_id" name="assignee_id">
+    <option value="">Не выбран</option>
+    {% for employee in users %}
+    <option value="{{ employee.id }}"{% if employee.id == assignee_id %} selected{% endif %}>{{ employee.full_name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="field">
+  <label for="description">Описание</label>
+  <div class="composer">
+    <textarea id="description" name="description" rows="5"
+              placeholder="Детали по карточке: стороны, объект, договорённости">{{ description }}</textarea>
+  </div>
+</div>
+
+{# Пункты чек-листа зависят от типа карточки: наборы приходят из схемы
+   (CARD_TYPE_CHECKLISTS). При смене типа списки перерисовывает js/tasks.js. #}
+<div class="field">
+  <label>Чек-лист</label>
+  <div class="checklist" data-task-checklist data-task-checklists="{{ checklists|tojson|forceescape }}">
+    {% for item in checklists.get(form_card_type, ()) %}
+    <label class="checklist__item">
+      <input type="checkbox" name="checklist" value="{{ item }}"{% if form_checklist.get(item) %} checked{% endif %}>
+      <span>{{ item }}</span>
+    </label>
+    {% else %}
+    <span class="panel__hint">У этого типа карточки чек-листа нет</span>
+    {% endfor %}
+  </div>
+</div>

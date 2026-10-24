@@ -1,6 +1,6 @@
-/* Модуль «Задачи»: перетаскивание карточек между столбцами доски, модальное
-   окно создания карточки, подтверждение удаления и перерисовка чек-листа
-   при смене типа карточки.
+/* Модуль «Задачи»: перетаскивание карточек между столбцами доски, модальные
+   окна создания и правки карточки, подтверждение удаления и перерисовка
+   чек-листа при смене типа карточки.
    Скрипт подключается на доске (tasks/index.html) и в форме карточки
    (tasks/form.html); без него обе страницы работают как обычные формы. */
 (function () {
@@ -11,6 +11,10 @@
 
   // Сколько ждём ответа сервера на перенос, миллисекунды
   var MOVE_TIMEOUT = 8000;
+
+  // Сколько миллисекунд после перетаскивания щелчок по карточке не открывает
+  // окно правки: отпускание кнопки мыши не должно считаться щелчком
+  var CLICK_AFTER_DRAG = 250;
 
   function toArray(collection) {
     return Array.prototype.slice.call(collection);
@@ -25,6 +29,10 @@
 
   var board = document.querySelector("[data-board]");
   var draggedCard = null;
+
+  // Когда закончилось последнее перетаскивание: по этой отметке обработчик
+  // щелчка отличает его от отпускания мыши после переноса
+  var dragEndedAt = 0;
 
   // Карточки столбца в порядке отображения
   function columnCards(column) {
@@ -68,6 +76,43 @@
     return cards.length;
   }
 
+  // Метка исполнителя на карточке: inline-SVG .card__marker, цвет — атрибут
+  // fill (та же разметка, что в tasks/index.html; inline-стили запрещены)
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  // Обновляет имя исполнителя в строке карточки и цветную метку по ответу
+  // сервера: если карточку без исполнителя вытащили из «На очереди», им
+  // становится авторизованный сотрудник, и без этого имя менялось бы только
+  // после перезагрузки страницы
+  function applyAssignee(card, data) {
+    var label = card.querySelector("[data-task-assignee]");
+    if (label) {
+      label.textContent = data.assignee_name || "Без исполнителя";
+    }
+    var marker = card.querySelector(".card__marker");
+    var rect = marker ? marker.querySelector("rect") : null;
+    if (!data.assignee_color) {
+      if (marker) {
+        marker.remove();
+      }
+      return;
+    }
+    if (!rect) {
+      marker = document.createElementNS(SVG_NS, "svg");
+      marker.setAttribute("class", "card__marker");
+      marker.setAttribute("aria-hidden", "true");
+      marker.setAttribute("focusable", "false");
+      rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("width", "100%");
+      rect.setAttribute("height", "100%");
+      rect.setAttribute("rx", "1.5");
+      marker.appendChild(rect);
+      // Метка стоит первой в карточке — как в шаблоне доски
+      card.insertBefore(marker, card.firstChild);
+    }
+    rect.setAttribute("fill", data.assignee_color);
+  }
+
   // Переносит карточку в выбранный столбец и отправляет позицию на сервер
   function moveCard(card, column, clientY) {
     var container = column.querySelector("[data-board-cards]");
@@ -86,9 +131,11 @@
     persistMove(card, status, index);
   }
 
-  // Отправляет перенос на сервер. Ответ короткий ({"ok": true}); при ошибке
-  // доска перезагружается — иначе карточка осталась бы не там, где её видит
-  // сервер, и следующий перенос затёр бы чужие позиции
+  // Отправляет перенос на сервер. В ответе приходит исполнитель карточки:
+  // если он был пуст и карточку вытащили из «На очереди», им становится
+  // авторизованный сотрудник, и имя в строке карточки обновляется без
+  // перезагрузки. При ошибке доска перезагружается — иначе карточка осталась
+  // бы не там, где её видит сервер, и следующий перенос затёр бы чужие позиции
   function persistMove(card, status, position) {
     var taskId = card.getAttribute("data-task-id") || "";
     if (!taskId || typeof window.fetch !== "function") {
@@ -113,6 +160,13 @@
       .then(function (response) {
         if (!response.ok) {
           throw new Error("move-failed-" + response.status);
+        }
+        // Ошибка разбора ответа тоже приведёт к перезагрузке доски
+        return response.json();
+      })
+      .then(function (data) {
+        if (data) {
+          applyAssignee(card, data);
         }
       })
       .catch(function () {
@@ -148,6 +202,7 @@
         card.classList.remove("is-dragging");
       }
       draggedCard = null;
+      dragEndedAt = Date.now();
       toArray(board.querySelectorAll("[data-board-cards]")).forEach(function (container) {
         container.classList.remove("is-over");
       });
@@ -204,9 +259,9 @@
 
   /* ── Фильтры доски ─────────────────────────────────────────────────────── */
 
-  // Фильтр применяется без кнопки «Показать»: смена исполнителя — сразу,
+  // Фильтр применяется без кнопки «Обновить»: смена исполнителя — сразу,
   // поиск — при выходе из поля (Tab, клик мимо) и по Enter. Если строку не
-  // меняли, лишней перезагрузки нет. Кнопки остаются для браузера без
+  // меняли, лишней перезагрузки нет. Кнопка остаётся для браузера без
   // скрипта: сервер обрабатывает ту же GET-форму.
   var filterForm = document.querySelector(".tasks-filter");
   var assigneeSelect = filterForm ? filterForm.querySelector('select[name="assignee"]') : null;
@@ -255,11 +310,11 @@
     });
   }
 
-  /* ── Модальное окно создания карточки ──────────────────────────────────── */
+  /* ── Модальные окна карточки: создание и правка ───────────────────────── */
 
   // Открывает <dialog> и ставит фокус в первое поле. Возвращает false, если
   // браузер не умеет showModal(): тогда ссылка сработает как обычная и
-  // откроет страницу /tasks/create
+  // откроет страницу /tasks/create или /tasks/update/{id}
   function openModal(dialog) {
     if (typeof dialog.showModal !== "function") {
       return false;
@@ -272,6 +327,88 @@
     return true;
   }
 
+  // Поля окна правки ищутся по именам и data-хукам: разметка — те же части,
+  // что у окна создания (_form_fields_main.html и _form_fields_extra.html),
+  // поэтому список полей в JavaScript не повторяется
+  function updateFields(form) {
+    return {
+      cardType: form.querySelector("[data-task-type]"),
+      title: form.querySelector('[name="title"]'),
+      contact: form.querySelector('[name="contact"]'),
+      dueDate: form.querySelector('[name="due_date"]'),
+      description: form.querySelector('[name="description"]'),
+      assignee: form.querySelector('[name="assignee_id"]'),
+      checklist: form.querySelector("[data-task-checklist]"),
+      remove: form.querySelector("[data-task-remove]")
+    };
+  }
+
+  // Значение списка ставится, только если такой пункт в нём есть: иначе
+  // браузер оставил бы список без выбранного значения
+  function setSelect(select, value) {
+    if (!select || !value) {
+      return;
+    }
+    var found = toArray(select.options).some(function (option) {
+      return option.value === value;
+    });
+    if (found) {
+      select.value = value;
+    }
+  }
+
+  // Заполняет окно правки значениями карточки: JSON лежит в data-task ссылки
+  // «Редактировать», адреса сохранения и удаления — рядом (data-task-form,
+  // data-task-delete-url). Возвращает false, если данных нет: тогда ссылка
+  // открывает страницу правки как обычно
+  function fillEditDialog(dialog, opener) {
+    var form = dialog.querySelector("form");
+    if (!form) {
+      return false;
+    }
+    var payload;
+    try {
+      payload = JSON.parse(opener.getAttribute("data-task") || "");
+    } catch (error) {
+      return false;
+    }
+    if (!payload || typeof payload !== "object") {
+      return false;
+    }
+
+    form.setAttribute("action", opener.getAttribute("data-task-form") || "");
+    var fields = updateFields(form);
+    setSelect(fields.cardType, payload.card_type || "");
+    if (fields.title) {
+      fields.title.value = payload.title || "";
+    }
+    if (fields.contact) {
+      fields.contact.value = payload.contact || "";
+    }
+    if (fields.dueDate) {
+      fields.dueDate.value = payload.due_date || "";
+    }
+    if (fields.description) {
+      fields.description.value = payload.description || "";
+    }
+    if (fields.assignee) {
+      // Пустое значение — пункт «Не выбран», он есть в списке всегда
+      fields.assignee.value = payload.assignee_id ? String(payload.assignee_id) : "";
+    }
+    if (fields.remove) {
+      fields.remove.setAttribute(
+        "data-task-remove",
+        opener.getAttribute("data-task-delete-url") || ""
+      );
+    }
+    // Чек-лист перерисовывается под тип карточки: отметки приходят из JSON
+    if (fields.checklist) {
+      var sets = checklistSets(fields.checklist);
+      renderChecklist(fields.checklist, sets[payload.card_type] || [], payload.checklist || {});
+    }
+    return true;
+  }
+
   document.addEventListener("click", function (event) {
     // Кнопка «Новая карточка» — ссылка на /tasks/create, скрипт её перехватывает
     var opener = closestElement(event.target, "[data-modal-open]");
@@ -279,6 +416,22 @@
       var modalId = opener.getAttribute("data-modal-open") || "";
       var dialog = modalId ? document.getElementById(modalId) : null;
       if (dialog && openModal(dialog)) {
+        event.preventDefault();
+      }
+      return;
+    }
+
+    // Щелчок по карточке открывает окно «Редактирование карточки», а не
+    // страницу /tasks/update/{id}: окно одно на всю доску, значения берутся
+    // у самой карточки (data-task)
+    var editOpener = closestElement(event.target, "[data-task-edit]");
+    if (editOpener) {
+      // Отпускание мыши после переноса — не щелчок: окно не открываем
+      if (Date.now() - dragEndedAt < CLICK_AFTER_DRAG) {
+        return;
+      }
+      var editDialog = document.getElementById("task-edit-modal");
+      if (editDialog && fillEditDialog(editDialog, editOpener) && openModal(editDialog)) {
         event.preventDefault();
       }
       return;
@@ -297,6 +450,22 @@
     // Клик по затемнённой подложке: цель совпадает с самим окном
     if (closestElement(event.target, "dialog.modal") === event.target) {
       event.target.close();
+    }
+  });
+
+  // Карточку на доске можно открыть и с клавиатуры: Enter или пробел на
+  // карточке (role="button" tabindex="0" в tasks/index.html)
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    var card = closestElement(event.target, "[data-task-edit]");
+    if (!card) {
+      return;
+    }
+    var dialog = document.getElementById("task-edit-modal");
+    if (dialog && fillEditDialog(dialog, card) && openModal(dialog)) {
+      event.preventDefault();
     }
   });
 
@@ -378,18 +547,20 @@
   // что в js/templates_db.js, но модуль «Задачи» от него не зависит.
   var confirmDialog = null;
   var confirmText = null;
-  var confirmPendingForm = null;
+  // Действие, которое выполняется после подтверждения: отправку формы или
+  // удаление из окна правки описывает тот, кто спрашивает подтверждение
+  var confirmAction = null;
 
   function closeConfirm(accept) {
-    var form = confirmPendingForm;
-    confirmPendingForm = null;
+    var action = confirmAction;
+    confirmAction = null;
     if (confirmDialog) {
       confirmDialog.close();
     }
-    // form.submit() отправляет форму напрямую, минуя обработчик submit —
-    // окно не открывается второй раз
-    if (accept && form) {
-      form.submit();
+    // Ожидаемое действие отправляет форму напрямую (form.submit()), минуя
+    // обработчик submit — окно не открывается второй раз
+    if (accept && action) {
+      action();
     }
   }
 
@@ -429,12 +600,25 @@
     row.appendChild(confirmButton);
     confirmDialog.appendChild(confirmText);
     confirmDialog.appendChild(row);
-    // Закрытие по Escape тоже забывает ожидающую форму
+    // Закрытие по Escape тоже забывает ожидающее действие
     confirmDialog.addEventListener("close", function () {
-      confirmPendingForm = null;
+      confirmAction = null;
     });
     document.body.appendChild(confirmDialog);
     return confirmDialog;
+  }
+
+  // Спрашивает подтверждение и запоминает действие. Возвращает false, если
+  // браузер не умеет <dialog>: тогда вызывающий код выполняет действие сразу
+  function askConfirm(message, action) {
+    var dialog = ensureConfirmDialog();
+    if (typeof dialog.showModal !== "function") {
+      return false;
+    }
+    confirmAction = action;
+    confirmText.textContent = message;
+    dialog.showModal();
+    return true;
   }
 
   // Формы с атрибутом data-confirm (удаление в корзину и окончательное
@@ -444,18 +628,58 @@
     if (!form || typeof form.getAttribute !== "function") {
       return;
     }
-    var message = form.getAttribute("data-confirm");
+    // Кнопка может нести свои подтверждение и адрес: «Удалить карточку»
+    // на странице правки отправляет форму в /tasks/delete/{id} (formaction),
+    // поэтому после подтверждения подменяем action — как это делает
+    // обработчик [data-task-remove] для окна правки
+    var submitter = event.submitter || null;
+    var message = (submitter && submitter.getAttribute("data-confirm")) ||
+      form.getAttribute("data-confirm");
     if (!message) {
       return;
     }
-    var dialog = ensureConfirmDialog();
-    if (typeof dialog.showModal !== "function") {
-      // Браузер без <dialog>: подтверждение пропускаем, форма уходит сразу
+    // form.submit() отправляет форму напрямую, минуя обработчик submit —
+    // окно не открывается второй раз
+    var asked = askConfirm(message, function () {
+      var address = submitter ? submitter.getAttribute("formaction") : "";
+      if (address) {
+        form.setAttribute("action", address);
+      }
+      form.submit();
+    });
+    if (asked) {
+      event.preventDefault();
+    }
+  });
+
+  // «Удалить карточку» в окне правки: адрес приходит от нажатой карточки
+  // (data-task-delete-url → атрибут кнопки data-task-remove, его ставит
+  // fillEditDialog). Кнопка не отправляет форму сама — сначала вопрос,
+  // как и у кнопок «В корзину» на карточках доски
+  document.addEventListener("click", function (event) {
+    var removeButton = closestElement(event.target, "[data-task-remove]");
+    if (!removeButton) {
+      return;
+    }
+    var form = removeButton.form || closestElement(removeButton, "form");
+    var action = removeButton.getAttribute("data-task-remove") || "";
+    if (!form || !action) {
       return;
     }
     event.preventDefault();
-    confirmPendingForm = form;
-    confirmText.textContent = message;
-    dialog.showModal();
+
+    var send = function () {
+      form.setAttribute("action", action);
+      form.submit();
+    };
+    var titleField = form.querySelector('[name="title"]');
+    var title = titleField ? titleField.value.trim() : "";
+    var message = title
+      ? "Убрать карточку «" + title + "» в корзину?"
+      : "Убрать карточку в корзину?";
+    if (!askConfirm(message, send)) {
+      // Браузер без <dialog>: подтверждение пропускаем, удаляем сразу
+      send();
+    }
   });
 })();

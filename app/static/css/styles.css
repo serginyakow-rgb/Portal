@@ -540,6 +540,10 @@ button { font-family: inherit; }
 .btn--primary:hover { background: var(--gold); border-color: var(--gold); color: #14243A; }
 .btn--ghost { background: transparent; color: var(--navy); border-color: var(--navy); }
 .btn--ghost:hover { background: var(--navy); color: #FFFFFF; }
+/* «Удалить карточку» в окне правки: та же форма, что у «Отмены», но в цвете
+   предупреждения — действие уводит карточку в корзину */
+.btn--danger { color: var(--warning); border-color: var(--warning); }
+.btn--danger:hover { background: var(--warning); border-color: var(--warning); color: #FFFFFF; }
 .btn svg { width: 16px; height: 16px; }
 
 /* ==========================================================================
@@ -559,7 +563,8 @@ button { font-family: inherit; }
 .field { display: grid; gap: 6px; }
 .field label { font-size: 12px; font-weight: 600; letter-spacing: .4px; color: var(--navy); }
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--divider);
@@ -571,11 +576,42 @@ button { font-family: inherit; }
   transition: border-color .2s ease, box-shadow .2s ease;
 }
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: none;
   border-color: var(--navy);
   box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
 }
+/* Многострочное поле (описание карточки): высоту задаёт атрибут rows,
+   растягивается только вниз, иначе «поехала» бы ширина двух колонок окна */
+.field textarea { line-height: 1.4; resize: vertical; }
+
+/* Срок карточки раздела «Задачи»: поле шириной с кнопку «Добавить карточку»
+   (общая переменная --task-action-width), а справа от него — блок «Добавить
+   в Google календарь», когда связь настроена. Обе колонки начинаются
+   с подписи одного размера, поэтому «Срок» и надпись блока стоят на одной
+   линии, а поля — под ними. flex-wrap нужен узким экранам: колонка уже
+   165 + 12 + 181px, и блок Google переносится под поле, а не вылезает. */
+.field--due { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.field--due > .field__main { display: grid; gap: 6px; width: var(--task-action-width, 160px); flex: none; }
+
+/* Блок Google Календаря в форме карточки: надпись в стиле .field label,
+   под ней чекбокс и время без отдельных подписей */
+.gcal { display: grid; gap: 6px; }
+.gcal__title { font-size: 12px; font-weight: 600; letter-spacing: .4px; color: var(--navy); white-space: nowrap; }
+.gcal__row { display: flex; align-items: center; gap: 10px; }
+/* Поля блока подчиняются общему .field input, но чекбокс — 16×16 без
+   UA-отступа (как в чек-листе), а время — фиксированной ширины вместо 100% */
+.field .gcal__check {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--navy);
+  cursor: pointer;
+}
+.field .gcal__time { width: 108px; flex: none; }
 /* Метка сотрудника в формах раздела «Пользователи»: поле цвета повторяет метку
    из списка (.table svg rect) — квадрат 18×18 со скруглением 4px. Ширину 100%
    и padding общего правила .field input снимаем: это не поле ввода текста.
@@ -1125,6 +1161,7 @@ button { font-family: inherit; }
 .field .checklist__item input[type="checkbox"] {
   width: 16px;
   height: 16px;
+  margin: 0;                     /* без UA-отступа 4px чекбокс стоит на линии поля */
   padding: 0;
   flex: none;
   accent-color: var(--navy);
@@ -1146,6 +1183,28 @@ button { font-family: inherit; }
   overflow-y: auto;
 }
 .modal::backdrop { background: rgba(10, 42, 77, .45); }
+
+/* Модальные окна карточки раздела «Задачи» (создание и правка): две колонки,
+   каждая шириной с прежнее поле окна (522px). Слева — тип, заголовок, контакт,
+   срок, исполнитель и кнопки под ними, справа — описание и чек-лист.
+   Заголовок окна занимает обе колонки, поэтому стоит над ними как раньше. */
+.modal--task { width: min(1096px, calc(100% - 32px)); }
+.modal--task > .calc__form { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.modal--task > .calc__form > .panel__head { grid-column: 1 / -1; }
+.modal__column { display: grid; gap: 12px; align-content: start; }
+/* Кнопок в окне правки три («Сохранить изменения», «Отмена», «Удалить
+   карточку»): на узком окне они переносятся на следующую строку, а не
+   вылезают за край */
+.modal--task .modal__column > .calc__row { flex-wrap: wrap; }
+
+/* Кнопка «Добавить карточку» и поле «Срок» — одной ширины: переменная задаёт
+   min-width кнопке (её подпись не переносится) и ширину поля срока. На
+   странице правки кнопка «Сохранить изменения» длиннее — min-width её
+   не сужает, поэтому подпись не обрезается. */
+.modal--task, .panel--task-form { --task-action-width: 165px; }
+.modal--task .calc__row > .btn--primary,
+.panel--task-form .calc__row > .btn--primary { min-width: var(--task-action-width); }
+
 .modal > .calc__form { gap: 12px; }
 .modal .panel__head { margin-bottom: 0; }
 
@@ -1250,8 +1309,27 @@ button { font-family: inherit; }
 .kb-column--review   .kb-column__head::before { background: rgb(var(--kb-review)); }
 .kb-column--done     .kb-column__head::before { background: rgb(var(--kb-done)); }
 
-/* Срок в карточке задачи: дата и значок предупреждения — в одной строке */
-.card__due { display: flex; align-items: center; gap: 5px; }
+/* Срок в карточке задачи: дата и значок предупреждения — в одной строке.
+   inline-flex — потому что срок стоит вторым элементом в строке «Исполнитель |
+   Срок» (.card__row), а не отдельным блоком */
+.card__due { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Строка «Исполнитель | Срок» в карточке задачи (доска) и «Исполнитель |
+   Удалена» в корзине: элементы идут в одну линию, при нехватке места
+   переносятся на следующую */
+.card__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Вертикальная черта между исполнителем и сроком — декоративная, поэтому
+   приглушена и скрыта от чтения с экрана (aria-hidden в шаблоне) */
+.card__bar { color: var(--muted); opacity: .45; }
+
+/* В подвале карточки задачи остались только кнопки — держим их у правого края */
+.card--task .card__foot { justify-content: flex-end; }
 
 /* Красный треугольник «срок истекает / просрочен»: цвет из палитры внимания */
 .card__due-alert { flex: none; color: var(--warning); }

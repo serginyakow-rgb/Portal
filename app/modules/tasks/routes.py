@@ -3,6 +3,7 @@
 Префикс адресов (/tasks) задаётся при подключении роутера в app/main.py,
 поэтому внутри модуля пути указаны без префикса.
 """
+import logging
 from datetime import date
 from typing import Annotated
 
@@ -10,12 +11,14 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.templating import render
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
 from app.modules.auth.service import list_users
+from app.modules.google_calendar import service as google_calendar
 from app.modules.tasks.schemas import (
     CARD_TYPE_CHECKLISTS,
     CARD_TYPE_LABELS,
@@ -25,6 +28,7 @@ from app.modules.tasks.schemas import (
     STATUS_ORDER,
     TaskCreate,
     TaskMove,
+    TaskMoveResult,
     TaskRead,
     TaskUpdate,
 )
@@ -44,6 +48,8 @@ from app.modules.tasks.service import (
 )
 
 router = APIRouter(tags=["tasks"])
+
+logger = logging.getLogger(__name__)
 
 # Значение active_menu для подсветки пункта «Задачи» в левом меню
 MENU_TASKS = "tasks"
@@ -91,10 +97,15 @@ async def _render_board(
     query: str = "",
     saved: bool = False,
     deleted: bool = False,
+    gcal: str = "",
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
-    """Рендерит доску: столбцы и фильтр по исполнителю."""
+    """Рендерит доску: столбцы и фильтр по исполнителю.
+
+    Выбранный сотрудник показывает свои карточки и карточки без исполнителя
+    (см. list_board); пустой фильтр — вся доска.
+    """
     users = await list_users(db)
     # Неизвестный фильтр (сотрудника удалили) сбрасываем: доска показывается целиком
     if assignee_id is not None and all(employee.id != assignee_id for employee in users):
@@ -116,8 +127,14 @@ async def _render_board(
         card_types=CARD_TYPE_LABELS,
         checklists=CARD_TYPE_CHECKLISTS,
         default_card_type=DEFAULT_CARD_TYPE,
+        # Блок «Добавить в Google календарь» в модальном окне: только при
+        # настроенной связи (Настройки → Связь с Google Календарём)
+        google_calendar_connected=google_calendar.is_connected(),
+        # Время события по умолчанию — то же, что подставит TaskCreate
+        goog_cal_time=google_calendar.DEFAULT_EVENT_TIME,
         saved=saved,
         deleted=deleted,
+        gcal=gcal,
         error=error,
         status_code=status_code,
     )
@@ -161,6 +178,8 @@ def _render_task_form(
     assignee_id: int | None = None,
     card_type: str = DEFAULT_CARD_TYPE,
     checklist: dict[str, bool] | None = None,
+    goog_cal: bool = False,
+    goog_cal_time: str = google_calendar.DEFAULT_EVENT_TIME,
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
@@ -183,6 +202,11 @@ def _render_task_form(
         card_types=CARD_TYPE_LABELS,
         checklists=CARD_TYPE_CHECKLISTS,
         status_labels=STATUS_LABELS,
+        # Блок «Добавить в Google календарь» рядом со «Сроком» (см. _render_board).
+        # Отметка и время возвращаются в форму, если карточку не удалось сохранить
+        google_calendar_connected=google_calendar.is_connected(),
+        goog_cal=goog_cal,
+        goog_cal_time=goog_cal_time,
         error=error,
         status_code=status_code,
     )
@@ -193,20 +217,40 @@ async def index_page(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: CurrentUser,
-    assignee: str = "",
+    assignee: str | None = None,
     q: str = "",
     saved: bool = False,
     deleted: bool = False,
+    gcal: str = "",
 ) -> HTMLResponse:
-    """Доска задач: четыре столбца и фильтры (исполнитель и поиск)."""
+    """Доска задач: четыре столбца и фильтры (исполнитель и поиск).
+
+    «Все сотрудники» (пустой `?assignee=`) — вся доска; конкретный
+    сотрудник — его карточки и карточки без исполнителя.
+
+    При входе в раздел (адрес без параметров, например пункт меню «Задачи»)
+    в фильтре «Исполнитель» подставляется текущий сотрудник: доска сразу
+    показывает его карточки и карточки без исполнителя. Туда же ведёт кнопка
+    «Сброс» — она очищает поиск и возвращает фильтр к текущему сотруднику.
+    Переходы после действий (`?saved=`, `?deleted=`, `?gcal=`) и поиск (`?q=`)
+    фильтр не подставляют — на экране остаётся то, что записано в адресе.
+    """
+    # «Вход в раздел» — адрес без параметров: подставляем авторизованного
+    # сотрудника. Пустой `?assignee=` (пункт «Все сотрудники») и любой
+    # другой параметр означают осознанный выбор — адрес не переписываем.
+    if assignee is None and not any((q, saved, deleted, gcal)):
+        assignee_id = user.id
+    else:
+        assignee_id = _filter_assignee(assignee)
     return await _render_board(
         request,
         db,
         user,
-        assignee_id=_filter_assignee(assignee),
+        assignee_id=assignee_id,
         query=q,
         saved=saved,
         deleted=deleted,
+        gcal=gcal,
     )
 
 
@@ -246,8 +290,16 @@ async def task_create(
     assignee_id: Annotated[str, Form()] = "",
     card_type: Annotated[str, Form()] = "",
     checklist: Annotated[list[str] | None, Form()] = None,
+    goog_cal: Annotated[str, Form(alias="GoogCal")] = "",
+    goog_cal_time: Annotated[str, Form(alias="GoogCalTime")] = google_calendar.DEFAULT_EVENT_TIME,
 ) -> HTMLResponse | RedirectResponse:
-    """Создаёт карточку: она встаёт в конец столбца «На очереди»."""
+    """Создаёт карточку: она встаёт в конец столбца «На очереди».
+
+    Если отмечен чекбокс «Добавить в Google календарь», после сохранения
+    карточки создаётся событие: заголовок — из «Заголовка карточки», дата —
+    из «Срока», время — из поля времени. Сбой календаря карточку не отменяет:
+    она уже записана, а на доске появляется предупреждение.
+    """
     users = await list_users(db)
     checked = _checked_items(checklist)
     try:
@@ -272,6 +324,8 @@ async def task_create(
             assignee_id=_to_int(assignee_id) or None,
             card_type=card_type or DEFAULT_CARD_TYPE,
             checklist=checked,
+            goog_cal=bool(goog_cal),
+            goog_cal_time=goog_cal_time,
             error=_validation_message(exc),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -288,12 +342,44 @@ async def task_create(
             assignee_id=data.assignee_id,
             card_type=data.card_type,
             checklist=checked,
+            goog_cal=bool(goog_cal),
+            goog_cal_time=goog_cal_time,
             error="Выбранный исполнитель не найден",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
     await create_task(db, data, created_by=user.id)
-    return RedirectResponse("/tasks/?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+
+    # Отметка «Добавить в Google календарь»: событие создаётся после записи
+    # карточки, чтобы сбой календаря не отменял уже введённые данные
+    if not goog_cal:
+        return RedirectResponse("/tasks/?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+
+    # Без срока событию некуда встать — карточка сохранена, событие пропущено
+    if data.due_date is None:
+        return RedirectResponse(
+            "/tasks/?saved=1&gcal=no_date", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    try:
+        # Google отвечает секундами: запрос уходит в пул потоков, чтобы доска
+        # и остальные страницы портала не ждали календарь (как в настройках)
+        event = await run_in_threadpool(
+            google_calendar.create_task_event,
+            data.title,
+            data.due_date,
+            goog_cal_time,
+        )
+    except google_calendar.GoogleCalendarError as exc:
+        logger.warning("Событие карточки «%s» не создано: %s", data.title, exc)
+        return RedirectResponse(
+            "/tasks/?saved=1&gcal=failed", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    logger.info("Событие карточки «%s» создано: %s", data.title, event["html_link"])
+    return RedirectResponse(
+        "/tasks/?saved=1&gcal=created", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.get("/update/{task_id}", response_class=HTMLResponse, response_model=None)
@@ -476,17 +562,20 @@ async def task_purge(
     return RedirectResponse("/tasks/trash?purged=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.post("/move/{task_id}", response_model=None)
+@router.post("/move/{task_id}", response_model=TaskMoveResult)
 async def task_move(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: CurrentUser,
     task_id: int,
     payload: TaskMove,
-) -> dict[str, bool]:
+) -> TaskMoveResult:
     """Переносит карточку по доске: короткий ответ для перетаскивания без перезагрузки.
 
     Параметр user — зависимость авторизации: перемещать может только вошедший
-    сотрудник, отдельных прав на карточки у модуля нет.
+    сотрудник, отдельных прав на карточки у модуля нет. Если карточку вытащили
+    из «На очереди», исполнителем становится этот сотрудник (move_task), поэтому
+    в ответе возвращается исполнитель — доска обновляет его имя в карточке
+    без перезагрузки.
     """
     task = await get_task(db, task_id)
     if task is None or task.deleted_at is not None:
@@ -494,5 +583,15 @@ async def task_move(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Карточка не найдена",
         )
-    await move_task(db, task, status=payload.status, position=payload.position)
-    return {"ok": True}
+    moved = await move_task(
+        db,
+        task,
+        status=payload.status,
+        position=payload.position,
+        actor_id=user.id,
+    )
+    return TaskMoveResult(
+        assignee_id=moved.assignee_id,
+        assignee_name=moved.assignee.full_name if moved.assignee else None,
+        assignee_color=moved.assignee.marker_color if moved.assignee else None,
+    )

@@ -9,21 +9,32 @@ MAX_TITLE = 200
 MAX_CONTACT = 200
 
 # Тип карточки: значение хранится в БД, подпись показывается на доске и в формах
+# Порядок словаря CARD_TYPE_LABELS = порядок пунктов в списке «Тип карточки»
 TaskCardType = Literal[
-    "gift", "sale_minor", "inheritance", "other", "personal", "spouse_consent"
+    "gift",
+    "sale_minor",
+    "sale_other",
+    "inheritance",
+    "power_of_attorney",
+    "spouse_consent",
+    "other",
+    "personal",
 ]
 
 CARD_TYPE_LABELS: dict[str, str] = {
     "gift": "Договор дарения",
     "sale_minor": "Договор купли-продажи с несовершеннолетним",
+    "sale_other": "Договор купли-продажи (иное)",
     "inheritance": "Наследство",
+    "power_of_attorney": "Доверенность",
+    "spouse_consent": "Согласие супруга",
     "other": "Иное",
     "personal": "Личное",
-    "spouse_consent": "Согласие супруга",
 }
 
 # Чек-лист по типу карточки: порядок пунктов = порядок чекбоксов в форме.
-# Те же списки продублированы в app/static/js/tasks.js — менять вместе.
+# Наборы попадают в разметку через data-task-checklists, поэтому в js/tasks.js
+# списка пунктов нет — он только перерисовывает чекбоксы при смене типа.
 CARD_TYPE_CHECKLISTS: dict[str, tuple[str, ...]] = {
     "gift": (
         "Документы дарителя",
@@ -43,6 +54,17 @@ CARD_TYPE_CHECKLISTS: dict[str, tuple[str, ...]] = {
         "Согласие супруги покупателя",
         "Родственные отношения / полномочия",
         "Дееспособность",
+        "Справка о составе семьи",
+    ),
+    "sale_other": (
+        "Документы продавца",
+        "Документы покупателя",
+        "Правоустанавливающие документы",
+        "Цена и порядок расчета",
+        "Согласие супруги продавца",
+        "Согласие супруга покупателя",
+        "Дееспособность",
+        "Справка о составе семьи",
     ),
     "inheritance": (),
     "other": (),
@@ -52,6 +74,12 @@ CARD_TYPE_CHECKLISTS: dict[str, tuple[str, ...]] = {
         "Данные супруга",
         "Данные объекта",
         "Свидетельство о браке",
+    ),
+    "power_of_attorney": (
+        "Документы доверителя",
+        "Данные поверенного",
+        "Содержание доверенности",
+        "Родственные отношения",
     ),
 }
 
@@ -74,7 +102,9 @@ STATUS_CLASSES: dict[str, str] = {
 }
 TaskStatus = Literal["queue", "in_progress", "review", "done"]
 
-DEFAULT_CARD_TYPE: TaskCardType = "other"
+# Тип по умолчанию: с него открываются окно «Новая карточка» на доске
+# и страница /tasks/create — самый частый вид сделки в конторе
+DEFAULT_CARD_TYPE: TaskCardType = "sale_minor"
 DEFAULT_STATUS: TaskStatus = "queue"
 
 
@@ -177,6 +207,19 @@ class TaskMove(BaseModel):
         return value
 
 
+class TaskMoveResult(BaseModel):
+    """Ответ на перемещение карточки: флаг и исполнитель после переноса.
+
+    Доска обновляет имя исполнителя в строке «Исполнитель | Срок» и цветную
+    метку по этим полям сразу, без перезагрузки страницы.
+    """
+
+    ok: bool = True
+    assignee_id: int | None = None
+    assignee_name: str | None = None
+    assignee_color: str | None = None
+
+
 class TaskRead(BaseModel):
     """Карточка целиком: для формы правки и служебных ответов."""
 
@@ -200,12 +243,18 @@ class TaskRead(BaseModel):
 
 
 class TaskListItem(BaseModel):
-    """Облегчённое представление карточки для доски: без описания и автора."""
+    """Карточка для доски и корзины: без автора и дат создания.
+
+    Описание и чек-лист на доске не выводятся: они нужны окну правки —
+    шаблон кладёт их в data-task на кнопке карточки, а js/tasks.js
+    заполняет ими поля окна (одно окно на всю доску).
+    """
 
     id: int
     title: str
     contact: str | None = None
     due_date: date | None = None
+    description: str | None = None
     card_type: TaskCardType
     card_type_label: str = ""
     status: TaskStatus
@@ -214,5 +263,7 @@ class TaskListItem(BaseModel):
     assignee_name: str | None = None
     # Цвет метки исполнителя (marker_color): им подсвечена левая грань карточки
     assignee_color: str | None = None
+    # Чек-лист типа карточки: {пункт: отмечен} — для предзаполнения окна правки
+    checklist: dict[str, bool] = {}
     deleted_at: datetime | None = None  # заполняется только у карточек корзины
 

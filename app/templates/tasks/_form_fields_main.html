@@ -1,0 +1,76 @@
+{# Первая часть полей карточки раздела «Задачи»: тип, заголовок, контакт, срок
+   и исполнитель. Общая разметка страницы создания/правки (tasks/form.html)
+   и обоих окон доски (tasks/index.html: «Новая карточка» и «Редактирование
+   карточки»).
+   Подключается директивой include и читает значения из контекста:
+   card_types, card_type, title, contact, due_date, assignee_id, users,
+   default_card_type, google_calendar_connected.
+   Необязательные переменные контекста:
+   field_prefix — начало id полей, чтобы два окна на одной странице не давали
+     одинаковых id (окно правки передаёт «edit-»; label for повторяет префикс);
+   gcal_enabled — показывать ли блок «Добавить в Google календарь»: окно правки
+     передаёт false, потому что при правке событие не создаётся. Без переменной
+     блок виден только при создании (not task).
+   На доске title, contact и due_date не переданы — поля пустые,
+   а тип карточки берётся из default_card_type. #}
+{% set field_id = field_prefix|default("") %}
+{% set form_card_type = card_type or default_card_type %}
+
+<div class="field">
+  <label for="{{ field_id }}card_type">Тип карточки</label>
+  <select id="{{ field_id }}card_type" name="card_type" required data-task-type>
+    {% for value, label in card_types.items() %}
+    <option value="{{ value }}"{% if value == form_card_type %} selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="field">
+  <label for="{{ field_id }}title">Заголовок карточки</label>
+  <input id="{{ field_id }}title" name="title" type="text" value="{{ title }}" required maxlength="200"
+         autocomplete="off" placeholder="Например: Договор дарения квартиры">
+</div>
+
+<div class="field">
+  <label for="{{ field_id }}contact">Контакт</label>
+  <input id="{{ field_id }}contact" name="contact" type="text" value="{{ contact }}" autocomplete="off"
+         placeholder="Телефон или имя клиента">
+</div>
+
+<div class="field field--due">
+  <div class="field__main">
+    <label for="{{ field_id }}due_date">Срок</label>
+    <input id="{{ field_id }}due_date" name="due_date" type="date" value="{{ due_date }}">
+  </div>
+
+  {# Блок Google Календаря показывается, только когда связь настроена
+     (Настройки → Связь с Google Календарём), стоит справа от «Срока»
+     и относится к созданию карточки: при правке событие не создаётся,
+     поэтому окно правки передаёт gcal_enabled=false. Отметка и время уходят
+     в задачу создания (/tasks/create): оттуда заголовок карточки, срок
+     и время попадают в новое событие календаря, а в данные самой карточки
+     не записываются. Подписей у полей нет намеренно: надпись над ними общая. #}
+  {% if google_calendar_connected and (gcal_enabled if gcal_enabled is defined else not task) %}
+  <div class="gcal">
+    <span class="gcal__title">Добавить в Google календарь</span>
+    <div class="gcal__row">
+      <input class="gcal__check" id="{{ field_id }}goog_cal" name="GoogCal" type="checkbox" value="1"
+             {% if goog_cal %}checked{% endif %}
+             title="Добавить событие в Google Календарь">
+      <input class="gcal__time" id="{{ field_id }}goog_cal_time" name="GoogCalTime" type="time"
+             value="{{ goog_cal_time|default('09:00') }}"
+             title="Время события">
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="field">
+  <label for="{{ field_id }}assignee_id">Выполняет</label>
+  <select id="{{ field_id }}assignee_id" name="assignee_id">
+    <option value="">Не выбран</option>
+    {% for employee in users %}
+    <option value="{{ employee.id }}"{% if employee.id == assignee_id %} selected{% endif %}>{{ employee.full_name }}</option>
+    {% endfor %}
+  </select>
+</div>

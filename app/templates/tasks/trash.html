@@ -30,11 +30,15 @@
       {% endif %}
 
       <div class="card__title">{{ task.title }}</div>
-      <p class="card__meta">Удалена: {{ task.deleted_at.strftime("%d.%m.%Y %H:%M") }}</p>
+      {# Та же строка, что на доске: исполнитель, черта, дата удаления.
+         Контакт в карточке корзины тоже не показывается #}
+      <p class="card__meta card__row">
+        <span>{{ task.assignee_name or "Без исполнителя" }}</span>
+        <span class="card__bar" aria-hidden="true">|</span>
+        <span>Удалена: {{ task.deleted_at.strftime("%d.%m.%Y %H:%M") }}</span>
+      </p>
 
       <div class="card__foot">
-        <span class="card__meta">{{ task.assignee_name or "Без исполнителя" }}</span>
-
         <div class="calc__row">
           <form method="post" action="/tasks/restore/{{ task.id }}">
             <button class="btn btn--ghost" type="submit"

@@ -1,0 +1,33 @@
+{# Вторая часть полей карточки раздела «Задачи»: описание и чек-лист.
+   Общая разметка страницы создания/правки (tasks/form.html) и правого столбца
+   обоих окон доски (tasks/index.html).
+   Подключается директивой include и читает значения из контекста:
+   description, checklists, checklist, card_type, default_card_type.
+   Необязательная переменная field_prefix — начало id поля «Описание»: окно
+   правки передаёт «edit-», чтобы id не совпадали с окном создания
+   (у чек-листа своего id нет — его находит js/tasks.js внутри формы). #}
+{% set field_id = field_prefix|default("") %}
+{% set form_card_type = card_type or default_card_type %}
+{% set form_checklist = checklist or {} %}
+
+<div class="field">
+  <label for="{{ field_id }}description">Описание</label>
+  <textarea id="{{ field_id }}description" name="description" rows="5"
+            placeholder="Детали по карточке: стороны, объект, договорённости">{{ description }}</textarea>
+</div>
+
+{# Пункты чек-листа зависят от типа карточки: наборы приходят из схемы
+   (CARD_TYPE_CHECKLISTS). При смене типа списки перерисовывает js/tasks.js. #}
+<div class="field">
+  <label>Чек-лист</label>
+  <div class="checklist" data-task-checklist data-task-checklists="{{ checklists|tojson|forceescape }}">
+    {% for item in checklists.get(form_card_type, ()) %}
+    <label class="checklist__item">
+      <input type="checkbox" name="checklist" value="{{ item }}"{% if form_checklist.get(item) %} checked{% endif %}>
+      <span>{{ item }}</span>
+    </label>
+    {% else %}
+    <span class="panel__hint">У этого типа карточки чек-листа нет</span>
+    {% endfor %}
+  </div>
+</div>

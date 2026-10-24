@@ -4,7 +4,7 @@
 {% block title %}{% if task %}Правка карточки{% else %}Новая карточка{% endif %} · Нотариальная контора{% endblock %}
 
 {% block content %}
-<section class="panel">
+<section class="panel panel--task-form">
   <div class="panel__head">
     <h1 class="panel__title">{% if task %}Изменение карточки{% else %}Новая карточка{% endif %}</h1>
     <span class="panel__hint">
@@ -22,8 +22,10 @@
 
   <form class="calc__form" method="post"
         action="{% if task %}/tasks/update/{{ task.id }}{% else %}/tasks/create{% endif %}">
-    {# Поля карточки — общий файл с модальным окном на доске (tasks/index.html) #}
-    {% include "tasks/_form_fields.html" %}
+    {# Поля карточки — общие части с модальным окном на доске (tasks/index.html):
+       здесь обе части идут подряд, одной колонкой #}
+    {% include "tasks/_form_fields_main.html" %}
+    {% include "tasks/_form_fields_extra.html" %}
 
     <div class="calc__row">
       <button class="btn btn--primary" type="submit">
@@ -31,10 +33,23 @@
       </button>
       <a class="btn btn--ghost" href="/tasks/" title="Вернуться без сохранения">Отмена</a>
     </div>
+
+    {% if task %}
+    {# «Удалить карточку» отдельной строкой: с карточки доски эта кнопка ушла,
+       а без скрипта удалить карточку больше негде. formaction отправляет эту
+       же форму в /tasks/delete/{id} (карточка уходит в корзину),
+       formnovalidate — чтобы незаполненный заголовок не мешал удалению,
+       data-confirm читает js/tasks.js и спрашивает подтверждение. #}
+    <div class="calc__row">
+      <button class="btn btn--ghost btn--danger" type="submit"
+              formaction="/tasks/delete/{{ task.id }}" formnovalidate
+              data-confirm="Убрать карточку «{{ task.title }}» в корзину?">Удалить карточку</button>
+    </div>
+    {% endif %}
   </form>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=6"></script>
 {% endblock %}

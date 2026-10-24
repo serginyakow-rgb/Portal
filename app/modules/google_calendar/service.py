@@ -18,7 +18,7 @@ import logging
 import os
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,11 @@ LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 CALENDAR_API = "calendar"
 CALENDAR_VERSION = "v3"
+
+# Время события из карточки, если поле времени пустое (совпадает с формой)
+DEFAULT_EVENT_TIME = "09:00"
+# Сколько длится событие, созданное из карточки: столько идёт приём у нотариуса
+EVENT_DURATION_MINUTES = 60
 
 
 class GoogleCalendarError(RuntimeError):
@@ -234,6 +239,17 @@ def get_status() -> GoogleCalendarStatus:
         account=_read_account(),
         message=message,
     )
+
+
+def is_connected() -> bool:
+    """Подключён ли календарь: в config/google_calendar есть сохранённый токен.
+
+    Проверка намеренно без обращения к сети: её спрашивает каждая отрисовка
+    доски задач (блок «Добавить в Google календарь» в форме карточки), а
+    обновлять просроченный токен и объяснять причину отказа должен только
+    раздел настроек — get_status().
+    """
+    return TOKEN_PATH.is_file()
 
 
 def _read_account() -> str | None:
@@ -468,6 +484,64 @@ def create_test_event(title: str = "Проверка связи с Google Кал
         _last_event = event
     logger.info("В Google Календаре создано тестовое событие: %s", event["html_link"])
     return event
+
+
+def create_task_event(
+    title: str,
+    due_date: date,
+    start_time: str = DEFAULT_EVENT_TIME,
+) -> dict[str, str]:
+    """Создаёт в календаре событие из карточки задачи.
+
+    Заголовок события — «Заголовок карточки», дата — «Срок», время — поле
+    времени рядом с чекбоксом «Добавить в Google календарь» (пустое поле
+    означает 09:00). Длительность — EVENT_DURATION_MINUTES: столько обычно
+    длится приём. Дату в прошлом Google принимает, поэтому карточку можно
+    завести задним числом — событие просто попадёт в прошедший день.
+
+    Возвращает данные события для сообщения нотариусу. Если календарь
+    не подключён или Google отказал, бросает GoogleCalendarError: карточка
+    к этому моменту уже сохранена, и сбой календаря её не отменяет.
+    """
+    summary = (title or "").strip() or "Карточка портала"
+    hour, minute = _parse_event_time(start_time)
+    start = datetime(
+        due_date.year, due_date.month, due_date.day, hour, minute
+    ).astimezone()
+    body = {
+        "summary": summary,
+        "start": _event_time(start),
+        "end": _event_time(start + timedelta(minutes=EVENT_DURATION_MINUTES)),
+    }
+
+    # Ошибка подключения (нет токена, истёк срок) уже содержит текст для экрана
+    credentials = _load_credentials()
+
+    try:
+        service = _build_calendar_service(credentials)
+        created = service.events().insert(calendarId="primary", body=body).execute()
+    except Exception as exc:  # noqa: BLE001 - текст ошибки уходит в интерфейс
+        logger.exception("Не удалось создать событие карточки в Google Календаре")
+        raise GoogleCalendarError(
+            f"Google не принял событие: {str(exc)[:200] or type(exc).__name__}"
+        ) from exc
+
+    event = {
+        "title": summary,
+        "start": start.strftime("%d.%m.%Y %H:%M"),
+        "html_link": str(created.get("htmlLink") or ""),
+    }
+    logger.info("В Google Календаре создано событие карточки: %s", event["html_link"])
+    return event
+
+
+def _parse_event_time(value: str) -> tuple[int, int]:
+    """Часы и минуты из поля времени; пустое или мусорное значение — 09:00."""
+    try:
+        moment = datetime.strptime((value or "").strip(), "%H:%M")
+    except ValueError:
+        moment = datetime.strptime(DEFAULT_EVENT_TIME, "%H:%M")
+    return moment.hour, moment.minute
 
 
 def _tomorrow_morning(hour: int) -> datetime:

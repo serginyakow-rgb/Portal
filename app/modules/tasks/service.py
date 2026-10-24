@@ -6,7 +6,7 @@
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.tasks.models import Task
@@ -28,12 +28,17 @@ def _now() -> datetime:
 
 
 def _to_list_item(task: Task) -> TaskListItem:
-    """Карточка доски: подпись типа и имя исполнителя берутся из справочника и связи."""
+    """Карточка доски: подпись типа и имя исполнителя берутся из справочника и связи.
+
+    Описание и чек-лист попадают в элемент списка для окна правки: на доске
+    они не выводятся, но шаблон отдаёт их в data-task на кнопке карточки.
+    """
     return TaskListItem(
         id=task.id,
         title=task.title,
         contact=task.contact,
         due_date=task.due_date,
+        description=task.description,
         card_type=task.card_type,
         card_type_label=CARD_TYPE_LABELS.get(task.card_type, task.card_type),
         status=task.status,
@@ -41,6 +46,7 @@ def _to_list_item(task: Task) -> TaskListItem:
         assignee_id=task.assignee_id,
         assignee_name=task.assignee.full_name if task.assignee else None,
         assignee_color=task.assignee.marker_color if task.assignee else None,
+        checklist=dict(task.checklist or {}),
         deleted_at=task.deleted_at,
     )
 
@@ -123,10 +129,18 @@ async def list_board(
     В каждом столбце срок идёт по возрастанию, карточки без срока («не задан»)
     стоят в конце; при одинаковых сроках сохраняется ручной порядок
     перетаскивания (position). Фильтры — исполнитель и поиск.
+
+    Фильтр по исполнителю показывает карточки выбранного сотрудника вместе
+    с карточками без исполнителя: «ничьи» карточки остаются видны в списке
+    любого сотрудника, иначе после выбора фильтра они терялись бы с доски.
     """
     stmt = select(Task).where(Task.deleted_at.is_(None))
     if assignee_id is not None:
-        stmt = stmt.where(Task.assignee_id == assignee_id)
+        # Карточки сотрудника и карточки без исполнителя (assignee_id IS NULL):
+        # «ничьи» карточки видны в списке любого сотрудника
+        stmt = stmt.where(
+            or_(Task.assignee_id == assignee_id, Task.assignee_id.is_(None))
+        )
     result = await db.execute(
         stmt.order_by(
             # IS NULL даёт 0 у карточек со сроком и 1 у пустых — пустые в конце
@@ -236,17 +250,28 @@ async def move_task(
     *,
     status: TaskStatus,
     position: int,
+    actor_id: int | None = None,
 ) -> Task:
     """Переносит карточку в столбец status на место position.
 
     Позиции в исходном и целевом столбцах перенумеровываются подряд (0..n-1),
     чтобы в порядке не появлялись дырки после каждого перетаскивания.
+
+    Если карточку вытащили из «На очереди» (DEFAULT_STATUS) в другой столбец
+    и исполнитель ещё не указан, им становится сотрудник, который её
+    перетащил (actor_id): работу начал он. Уже выбранного исполнителя перенос
+    не меняет — ни в «На очереди», ни при перестановках между остальными
+    столбцами.
     """
     old_status = task.status
     target = await _column_tasks(db, status, exclude_id=task.id)
     source = await _column_tasks(db, old_status, exclude_id=task.id) if old_status != status else []
 
     task.status = status
+    moved_out_of_queue = old_status == DEFAULT_STATUS and status != DEFAULT_STATUS
+    reassigned = moved_out_of_queue and actor_id is not None and task.assignee_id is None
+    if reassigned:
+        task.assignee_id = actor_id
     target.insert(max(0, min(position, len(target))), task)
     for order, item in enumerate(target):
         item.position = order
@@ -254,6 +279,11 @@ async def move_task(
         item.position = order
 
     await db.commit()
+    if reassigned:
+        # Связь assignee кэширована в объекте (expire_on_commit=False): после
+        # смены ключа её нужно перечитать, иначе имя исполнителя осталось бы
+        # прежним до нового запроса к БД
+        await db.refresh(task, ["assignee"])
     moved = await get_task(db, task.id)
     return moved if moved is not None else task
 

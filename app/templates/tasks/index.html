@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon_plus, icon_edit, icon_archive,
+{% from "_macros.html" import icon_plus, icon_edit,
                                status_done, status_warn, icon_due_alert %}
 
 {% block title %}Задачи · Нотариальная контора{% endblock %}
@@ -9,7 +9,15 @@
    строке шапки. Фильтр — обычная GET-форма: выбранный сотрудник и поисковая
    строка остаются в адресе (?assignee=…&q=…), поэтому после перезагрузки
    доска показывает те же карточки. Поиск идёт по заголовку, контакту
-   и описанию карточки без учёта регистра. #}
+   и описанию карточки без учёта регистра. Кнопка «Обновить» отправляет форму
+   в браузере без скрипта (js/tasks.js делает это сам при смене фильтров).
+
+   Список «Исполнитель»: «Все сотрудники» — вся доска; конкретный сотрудник —
+   его карточки и карточки без исполнителя (см. list_board в service.py).
+   При входе в раздел (адрес /tasks/ без параметров) сервер сам подставляет
+   авторизованного сотрудника (index_page в routes.py). Кнопка «Сброс» ведёт
+   на тот же /tasks/: поиск очищается, в фильтре снова текущий сотрудник;
+   явный пустой ?assignee= — «Все сотрудники». #}
 <section class="panel panel--tasks">
   <div class="panel__head">
     <h1 class="panel__title">Задачи</h1>
@@ -27,13 +35,27 @@
       <label for="search">Поиск</label>
       <input id="search" name="q" type="search" value="{{ query }}" autocomplete="off"
              placeholder="Заголовок, контакт, описание">
-      <button class="btn btn--primary" type="submit">Показать</button>
-      <a class="btn btn--ghost" href="/tasks/" title="Сбросить фильтры и показать все карточки">Сброс</a>
+      <button class="btn btn--primary" type="submit"
+              title="Обновить доску по выбранным фильтрам">Обновить</button>
+      <a class="btn btn--ghost" href="/tasks/" title="Очистить поиск и показать карточки текущего сотрудника">Сброс</a>
       <a class="btn btn--ghost" href="/tasks/trash" title="Удалённые карточки">Корзина</a>
     </form>
   </div>
 
-  {% if saved %}{{ status_done("Изменения сохранены.") }}{% endif %}
+  {# Итог создания карточки с отметкой «Добавить в Google календарь»: событие
+     создаётся после сохранения карточки, поэтому отказ календаря карточку
+     не отменяет — сообщение объясняет, что именно произошло. #}
+  {% if saved %}
+    {% if gcal == "created" %}
+    {{ status_done("Карточка добавлена, событие создано в Google Календаре.") }}
+    {% elif gcal == "no_date" %}
+    {{ status_warn("Карточка добавлена, но событие не создано: у карточки не заполнен срок.") }}
+    {% elif gcal == "failed" %}
+    {{ status_warn("Карточка добавлена, но создать событие в Google Календаре не удалось: проверьте связь в настройках.") }}
+    {% else %}
+    {{ status_done("Изменения сохранены.") }}
+    {% endif %}
+  {% endif %}
   {% if deleted %}{{ status_done("Карточка убрана в корзину.") }}{% endif %}
   {% if error %}{{ status_warn(error) }}{% endif %}
 </section>
@@ -53,9 +75,31 @@
 
     <div class="board__cards" data-board-cards>
       {% for task in columns[status_key] %}
+      {# Значения полей этой карточки для окна правки: одно окно на всю доску,
+         js/tasks.js разбирает JSON из атрибута data-task и заполняет им поля #}
+      {% set edit_payload = {
+           "title": task.title,
+           "contact": task.contact or "",
+           "due_date": task.due_date.isoformat() if task.due_date else "",
+           "description": task.description or "",
+           "assignee_id": task.assignee_id,
+           "card_type": task.card_type,
+           "checklist": task.checklist
+         } %}
+      {# Карточка открывает окно «Редактирование карточки» щелчком мыши:
+         data-task-edit ловит js/tasks.js, data-task-form и data-task-delete-url —
+         адреса сохранения и удаления для окна, data-task — значения полей.
+         role/tabindex нужны, чтобы карточку можно было открыть с клавиатуры
+         (Enter или пробел), aria-haspopup — что откроется окно.
+         Перетаскивание прежнее: карточка по-прежнему draggable. #}
       <article class="card card--task board__card" draggable="true"
                data-task-id="{{ task.id }}" data-task-status="{{ task.status }}"
-               data-task-position="{{ task.position }}">
+               data-task-position="{{ task.position }}"
+               data-task-edit
+               data-task-form="/tasks/update/{{ task.id }}"
+               data-task-delete-url="/tasks/delete/{{ task.id }}"
+               data-task="{{ edit_payload|tojson|forceescape }}"
+               role="button" tabindex="0" aria-haspopup="dialog">
         {# Метка исполнителя: полоса 10px во всю высоту левой грани, углы
            скруглены как у карточки (.card--task .card__marker). Цвет —
            атрибут fill (inline-стили в шаблонах запрещены) #}
@@ -66,29 +110,35 @@
         {% endif %}
 
         <div class="card__title">{{ task.title }}</div>
-        {% if task.contact %}<p class="card__meta">{{ task.contact }}</p>{% endif %}
-        {# Срок показывается всегда; «не задан» — когда дата в карточке пустая.
-           Если до срока сутки или меньше (включая просроченные карточки),
-           поле выделяется жирным красным текстом и получает значок. #}
+        {# Строка «Исполнитель | Срок». Контакт на доске не выводится — он остаётся
+           полем карточки (форма правки и модальное окно). Срок показывается
+           всегда; «не задан» — когда дата в карточке пустая. Если до срока
+           сутки или меньше (включая просроченные карточки), срок выделяется
+           жирным красным текстом и получает значок. #}
         {% set days_left = (task.due_date - today).days if task.due_date else none %}
         {% set due_soon = days_left is not none and days_left <= 1 %}
-        <p class="card__meta card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</p>
+        <p class="card__meta card__row">
+          {# data-task-assignee: сюда js/tasks.js пишет исполнителя из ответа
+             /tasks/move/{id} — если поле было пустым, после переноса
+             из «На очереди» это авторизованный сотрудник, имя меняется
+             без перезагрузки #}
+          <span data-task-assignee>{{ task.assignee_name or "Без исполнителя" }}</span>
+          <span class="card__bar" aria-hidden="true">|</span>
+          <span class="card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</span>
+        </p>
 
-        <div class="card__foot">
-          <span class="card__meta">{{ task.assignee_name or "Без исполнителя" }}</span>
-
-          <div class="calc__row">
-            {# draggable="false": иначе браузер тянет ссылку вместо карточки #}
-            <a class="btn btn--ghost" href="/tasks/update/{{ task.id }}" draggable="false"
-               title="Редактировать карточку">{{ icon_edit() }}</a>
-
-            <form method="post" action="/tasks/delete/{{ task.id }}"
-                  data-confirm="Убрать карточку «{{ task.title }}» в корзину?">
-              <button class="btn btn--ghost" type="submit"
-                      title="Убрать в корзину">{{ icon_archive() }}</button>
-            </form>
+        {# Кнопок «Редактировать» и «Удалить» на карточке больше нет: правка
+           открывается щелчком по карточке, удаление — из окна правки.
+           Без скрипта щелчок окно не открывает, поэтому здесь же лежит обычная
+           ссылка на страницу правки — при включённом JS браузер её не создаёт #}
+        <noscript>
+          <div class="card__foot">
+            <div class="calc__row">
+              <a class="btn btn--ghost" href="/tasks/update/{{ task.id }}"
+                 title="Редактировать карточку">{{ icon_edit() }}</a>
+            </div>
           </div>
-        </div>
+        </noscript>
       </article>
       {% endfor %}
       {# Подсказка есть в каждом столбце и скрыта, пока в нём есть карточки;
@@ -98,27 +148,77 @@
   </section>
   {% endfor %}
 </div>
-{# Модальное окно создания: поля — тот же файл, что и на странице правки.
+{# Модальное окно создания: поля — те же части, что и на странице правки,
+   и в окне «Редактирование карточки» ниже.
+   Две колонки (modal--task): слева тип, заголовок, контакт, срок, исполнитель
+   и кнопки под ними; справа описание и чек-лист. Отдельной кнопки «Закрыть»
+   нет — окно закрывают «Отмена», Escape и клик по подложке (js/tasks.js).
    Без скрипта ссылка «Новая карточка» открывает обычную страницу /tasks/create. #}
-<dialog class="modal" id="task-modal" aria-labelledby="task-modal-title">
+<dialog class="modal modal--task" id="task-modal" aria-labelledby="task-modal-title">
   <form class="calc__form" method="post" action="/tasks/create">
     <div class="panel__head">
       <h2 class="panel__title" id="task-modal-title">Новая карточка</h2>
-      <button class="btn btn--ghost" type="button" data-modal-close title="Закрыть окно">Закрыть</button>
     </div>
 
-    {% with card_type=default_card_type, checklist={} %}
-    {% include "tasks/_form_fields.html" %}
-    {% endwith %}
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={} %}
+      {% include "tasks/_form_fields_main.html" %}
+      {% endwith %}
 
-    <div class="calc__row">
-      <button class="btn btn--primary" type="submit">Добавить карточку</button>
-      <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit">Добавить карточку</button>
+        <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+      </div>
+    </div>
+
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={} %}
+      {% include "tasks/_form_fields_extra.html" %}
+      {% endwith %}
+    </div>
+  </form>
+</dialog>
+
+{# Окно правки карточки: те же части полей, что у окна создания, но значения
+   подставляет js/tasks.js из data-task нажатой карточки, а заголовок окна
+   постоянный. Окно одно на всю доску, поэтому адрес сохранения (action)
+   пустой — его ставит скрипт из data-task-form; без скрипта ссылка
+   «Редактировать» открывает страницу /tasks/update/{id}, где форма
+   заполнена сервером.
+   Блок «Добавить в Google календарь» здесь скрыт всегда (gcal_enabled=false):
+   при правке событие не создаётся. Префикс id «edit-» — чтобы поля окна
+   не совпадали по id с полями окна создания (label for его повторяет).
+   Кнопки: сохранить, отмена и «Удалить карточку» — удаление убирает карточку
+   в корзину (/tasks/delete/{id}) после подтверждения (js/tasks.js). #}
+<dialog class="modal modal--task" id="task-edit-modal" aria-labelledby="task-edit-title">
+  <form class="calc__form" method="post" action="">
+    <div class="panel__head">
+      <h2 class="panel__title" id="task-edit-title">Редактирование карточки</h2>
+    </div>
+
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={}, field_prefix="edit-", gcal_enabled=false %}
+      {% include "tasks/_form_fields_main.html" %}
+      {% endwith %}
+
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+        <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+        {# type="button": отправляет не форма, а js/tasks.js — после
+           подтверждения и с адресом из data-task-delete-url карточки #}
+        <button class="btn btn--ghost btn--danger" type="button" data-task-remove>Удалить карточку</button>
+      </div>
+    </div>
+
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={}, field_prefix="edit-" %}
+      {% include "tasks/_form_fields_extra.html" %}
+      {% endwith %}
     </div>
   </form>
 </dialog>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=6"></script>
 {% endblock %}

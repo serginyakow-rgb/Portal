@@ -1,6 +1,6 @@
 # Карта проекта
 
-> Снимок на 17.10.2026, коммит `2d0ef83` (ветка `main`).
+> Снимок на 24.10.2026, коммит `0104fde` (ветка `main`).
 > Документ описывает фактическую структуру кода. Источник истины — код и
 > `clinerules/`; при расхождении с `README.md` или `memory-bank/` ориентируйтесь
 > на код.
@@ -21,9 +21,10 @@ Jinja2, FastAPI и SQLite. Клиентского фреймворка и сбо
 | Шаблоны | Jinja2, `app/templates/` |
 | Статика | `app/static/`, монтируется на `/static` без кэширования |
 | Авторизация | bcrypt + JWT HS256 в httpOnly-cookie `portal_token` |
-| Функциональные модули | `auth`, `calculators`, `templates_db`, `tasks`, `settings` |
-| Клиентские скрипты | 13 файлов в `app/static/js/` |
-| Jinja-шаблоны | 27 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
+| Функциональные модули | `auth`, `calculators`, `templates_db`, `tasks`, `settings`, `google_calendar` |
+| Клиентские скрипты | 14 файлов в `app/static/js/` |
+| Jinja-шаблоны | 29 файлов в `app/templates/` (включая `base.html` и эталон `_block_template.html`) |
+| Внешние интеграции | Google Календарь (OAuth-клиент + Calendar API), настройка — `SetupCal.md` |
 
 ## 2. Слои и направление зависимостей
 
@@ -36,6 +37,10 @@ flowchart LR
     Auth["modules/auth<br/>/auth/*"]
     Calc["modules/calculators<br/>/calculators/*"]
     TDB["modules/templates_db<br/>/templates-db/*"]
+    Tasks["modules/tasks<br/>/tasks/*"]
+    Settings["modules/settings<br/>/settings/*"]
+    GCal["modules/google_calendar<br/>service.py, OAuth + API"]
+    Google["Google Calendar API<br/>внешний сервис"]
     Services["service.py модулей<br/>бизнес-логика"]
     ORM["SQLAlchemy async<br/>AsyncSession"]
     DB[("SQLite<br/>portal.db")]
@@ -45,13 +50,22 @@ flowchart LR
     Main --> Auth
     Main --> Calc
     Main --> TDB
+    Main --> Tasks
+    Main --> Settings
+    Settings --> GCal
+    GCal -->|HTTPS| Google
     Auth --> Render
     Calc --> Render
     TDB --> Render
+    Tasks --> Render
+    Settings --> Render
+    GCal --> Render
     Render -->|HTML| Browser
     Auth --> Services
     Calc --> Services
     TDB --> Services
+    Tasks --> Services
+    Settings --> Services
     Services --> ORM
     ORM --> DB
 ```
@@ -86,20 +100,27 @@ Portal/
 │   ├── modules/
 │   │   ├── auth/                пользователи, вход, роли, профиль
 │   │   ├── calculators/         каталог и страницы калькуляторов
+│   │   ├── google_calendar/     OAuth-клиент, токен, события Google Календаря
+│   │   ├── settings/            справочники и разделы настроек
 │   │   ├── tasks/               раздел «Задачи»: карточки канбан-доски
 │   │   └── templates_db/        база заготовок: разделы, теги, блоки
 │   ├── templates/
 │   │   ├── base.html            общий каркас, шапка, меню, блок scripts
-│   │   ├── auth/                login.html, users.html, profile.html
+│   │   ├── _macros.html         иконки и строки статуса
+│   │   ├── _users_panel.html    раздел «Пользователи» внутри настроек
+│   │   ├── _inheritance_tariff_panel.html   региональный тариф наследства
+│   │   ├── _google_calendar_panel.html      связь с Google Календарём
+│   │   ├── auth/                login.html, profile.html
 │   │   ├── dashboard/           index.html
-│   │   ├── calculators/         index + 6 страниц + _block_template.html
+│   │   ├── calculators/         index + 9 страниц + _block_template.html
+│   │   ├── settings/            index.html, section.html
 │   │   ├── tasks/               index.html — доска, trash.html — корзина,
 │   │   │                        form.html — карточка, _form_fields.html — поля
 │   │   └── templates_db/        index, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
 │       ├── img/logo.jpg
-│       └── js/                  8 клиентских скриптов
+│       └── js/                  14 клиентских скриптов
 ├── clinerules/
 │   ├── 01-carcass.md            стек, структура, запреты
 │   └── 02-calculators.md        правила и эталоны калькуляторов
@@ -110,6 +131,8 @@ Portal/
 ├── requirements.txt             зафиксированные зависимости
 ├── run.bat                      запуск: venv, зависимости, .env, админ, сервер
 ├── README.md                    вход, роли, запуск, переменные окружения
+├── SetupCal.md                  инструкция подключения Google Календаря
+├── config/google_calendar/      ключ OAuth-клиента и токен (не в git)
 ├── .env.example                 шаблон настроек
 ├── portal.db                    локальная SQLite (не в git)
 ├── uvicorn.log                  лог запуска (игнорируется)
@@ -223,6 +246,70 @@ Portal/
 - после успешных действий выполняется `303 RedirectResponse` с флагом
   `?saved=1`, `?created=1`, `?updated=1` или `?deleted=1`.
 
+### 4.4. `app/modules/settings` — справочники и разделы настроек
+
+| Файл | Назначение |
+| --- | --- |
+| `models.py` | `InheritanceTariff` (таблица `inheritance_tariffs`: `asset_type`, `rate`) |
+| `schemas.py` | `InheritanceTariffInput`: вид имущества до 200 символов, тариф — целое больше нуля |
+| `service.py` | список, чтение, создание, правка и удаление строк справочника |
+| `routes.py` | `APIRouter(tags=["settings"])`: пользователи, резервное копирование, тариф, Google Календарь |
+
+Особенности:
+
+- доступ ко всем маршрутам закрыт `require_role("admin")` (`AdminUser`);
+- страница `settings/index.html` — общее меню разделов слева (`?section`), справа
+  подключается партиал `_users_panel.html`, `_inheritance_tariff_panel.html` или
+  `_google_calendar_panel.html`;
+- `_render_settings()` и `_render_tariffs_section()` собирают контекст страницы,
+  ошибки валидации возвращаются с кодом `400` без редиректа;
+- успешные действия завершаются `303` с флагом `?created=1`, `?updated=1`,
+  `?deleted=1`, `?uploaded=1`, `?disconnected=1`;
+- `/settings/backup` — по-прежнему заглушка `settings/section.html`.
+
+### 4.5. `app/modules/google_calendar` — связь с Google Календарём
+
+| Файл | Назначение |
+| --- | --- |
+| `service.py` | состояние связи, загрузка ключа, вход в Google, проверка токена, тестовое событие |
+| `__init__.py` | пустой: модуль используется как `from app.modules.google_calendar import service` |
+
+Ключевые константы `service.py`:
+
+| Константа | Значение | Смысл |
+| --- | --- | --- |
+| `CONFIG_DIR` | `config/google_calendar` | каталог ключа и токена (в `.gitignore`) |
+| `CREDENTIALS_PATH` | `.../credentials.json` | ключ OAuth-клиента, загруженный нотариусом |
+| `TOKEN_PATH` | `.../token.json` | токен доступа, полученный после входа |
+| `ACCOUNT_PATH` | `.../account.txt` | почта подключённого аккаунта |
+| `SCOPES` | `https://www.googleapis.com/auth/calendar` | полный доступ к календарю |
+| `MAX_CREDENTIALS_SIZE` | 64 КБ | предел размера загружаемого файла ключа |
+| `CONNECT_TIMEOUT_SECONDS` | 300 | ожидание кода подтверждения от Google |
+| `LOOPBACK_HOSTS` | `localhost`, `127.0.0.1`, `::1` | вход разрешён только на самом сервере |
+
+Публичные функции: `get_status()` → `GoogleCalendarStatus` (`libraries_installed`,
+`has_credentials`, `has_token`, `connected`, `account`, `message`),
+`save_credentials()`, `delete_credentials()`, `disconnect()`, `start_connect()`,
+`connect_state()`, `create_test_event()`, `last_test_event()`,
+`is_loopback_host()`, `libraries_available()`.
+
+Как работает:
+
+1. Нотариус загружает JSON OAuth-клиента типа **Desktop app**; файл проверяется
+   по размеру и содержимому (`installed`/`web`, `client_id`) и кладётся в
+   `config/google_calendar/credentials.json`.
+2. `start_connect()` поднимает фоновый поток: `InstalledAppFlow.run_local_server()`
+   слушает loopback-порт, поэтому вход выполняется только на компьютере с
+   порталом. Состояние опрашивает `google-calendar.js` через
+   `/settings/google-calendar/connect/status`.
+3. Полученный токен сохраняется в `token.json`; при истечении он обновляется по
+   refresh-токену без участия пользователя.
+4. `create_test_event()` создаёт событие «Проверка связи с Google Календарём» на
+   завтра, 10:00, в часовом поясе сервера и возвращает ссылку на событие.
+5. Ошибки входа переводятся в понятный текст функциями `_connect_error_message()`
+   и `_connect_error_hint()` (тестовые пользователи, статус Testing, доступ к
+   scope, `redirect_uri_mismatch`).
+
 ## 5. Маршруты
 
 Обозначения доступа: **все** — без авторизации, **авторизован** — любой активный
@@ -289,7 +376,17 @@ Portal/
 | POST | `/settings/users/{user_id}/update` | admin | `settings_users_update` | смена имени и пароля, `303` на `?updated=1` |
 | POST | `/settings/users/{user_id}/delete` | admin | `settings_users_delete` | удаление, кроме себя, `303` на `?deleted=1` |
 | GET | `/settings/backup` | admin | `settings_backup_page` | `settings/section.html` — заглушка |
-| GET | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_page` | `settings/section.html` — заглушка |
+| GET | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_page` | `settings/index.html` + `_inheritance_tariff_panel.html`; `?edit=<id>` — форма правки |
+| POST | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_create` | добавление строки, `303` на `?created=1` |
+| POST | `/settings/inheritance-tariff/{tariff_id}/update` | admin | `settings_inheritance_tariff_update` | правка строки, `303` на `?updated=1` |
+| POST | `/settings/inheritance-tariff/{tariff_id}/delete` | admin | `settings_inheritance_tariff_delete` | удаление строки, `303` на `?deleted=1` |
+| GET | `/settings/google-calendar` | admin | `settings_google_calendar_page` | `_google_calendar_panel.html`; флаги `?uploaded=`, `?deleted=`, `?disconnected=` |
+| POST | `/settings/google-calendar/credentials` | admin | `settings_google_calendar_upload_credentials` | приём файла ключа (multipart), `303` на `?uploaded=1` или `400` с текстом ошибки |
+| POST | `/settings/google-calendar/credentials/delete` | admin | `settings_google_calendar_delete_credentials` | удаление ключа вместе с токеном, `303` на `?deleted=1` |
+| POST | `/settings/google-calendar/connect` | admin | `settings_google_calendar_connect` | вход в Google на loopback-адресе; с другого хоста — `400` с подсказкой |
+| GET | `/settings/google-calendar/connect/status` | admin | `settings_google_calendar_connect_status` | `JSONResponse` — состояние фонового входа |
+| POST | `/settings/google-calendar/disconnect` | admin | `settings_google_calendar_disconnect` | забыть токен, ключ остаётся, `303` на `?disconnected=1` |
+| POST | `/settings/google-calendar/test-event` | admin | `settings_google_calendar_test_event` | создание тестового события; при ошибке `400` с текстом |
 
 ### 5.6. Задачи (`app/modules/tasks/routes.py`)
 
@@ -373,6 +470,8 @@ Portal/
 | `templates_db/block_view.html` | `templates_db.js` |
 | `tasks/index.html` | `tasks.js` |
 | `tasks/form.html` | `tasks.js` |
+| `settings/index.html` | `google-calendar.js` — только когда открыт раздел «Связь с Google Календарём» |
+| `_google_calendar_panel.html` | нет: партиал внутри `settings/index.html`, скрипт подключает страница |
 
 Назначение клиентских файлов:
 
@@ -387,6 +486,7 @@ Portal/
 | `vydelenie-doley-msk.js` | подбор долей по МСК, стоимость доли и нотариальный тариф |
 | `templates_db.js` | копирование текста, поиск по Tab, подтверждение удаления |
 | `tasks.js` | доска «Задачи»: перетаскивание, модалка создания, чек-лист по типу, подтверждение удаления |
+| `google-calendar.js` | опрос `/settings/google-calendar/connect/status`, ожидание входа в Google, перезагрузка страницы после подключения |
 | `app.js` | зарезервирован под общую логику портала |
 
 Скрипты калькуляторов используют IIFE, `"use strict"`, ES5-совместимый
@@ -401,6 +501,7 @@ Portal/
 ```mermaid
 erDiagram
     users ||--o{ template_blocks : "created_by"
+    users ||--o{ tasks : "assignee_id / created_by"
     sections ||--o{ template_blocks : "section_id"
     template_blocks ||--o{ block_tags : "block_id"
     tags ||--o{ block_tags : "tag_id"
@@ -443,6 +544,29 @@ erDiagram
         int block_id PK
         int tag_id PK
     }
+
+    inheritance_tariffs {
+        int id PK
+        string asset_type
+        int rate
+    }
+
+    tasks {
+        int id PK
+        string title
+        string contact
+        date due_date
+        text description
+        int assignee_id FK
+        string card_type
+        string status
+        json checklist
+        int created_by FK
+        datetime created_at
+        datetime updated_at
+        datetime deleted_at
+        int position
+    }
 ```
 
 Ограничения и поведение:
@@ -453,6 +577,10 @@ erDiagram
 - `block_tags` — составной первичный ключ, при удалении блока или тега связи
   удаляются каскадно.
 - `SectionNotEmptyError` не даёт удалить раздел, в котором есть заготовки.
+- `inheritance_tariffs` — плоский справочник без связей: `asset_type` и `rate`;
+  дубли контролируются только формой и соглашением администратора.
+- `tasks.deleted_at` переводит карточку в корзину, `position` хранит порядок на
+  доске; `checklist` — JSON-словарь пунктов.
 - Схему создаёт `Base.metadata.create_all` при старте; Alembic-миграции не
   используются. Для существующей SQLite-базы колонки добавляются вручную.
 
@@ -533,7 +661,20 @@ POST /templates-db/blocks/new
 ```
 
 `active_menu` управляет подсветкой пункта меню: `templates_db`, `calculators`,
-`users`, `profile`, `panel`.
+`users`, `profile`, `panel`, `tasks`, `settings`.
+
+### 8.6. Подключение Google Календаря
+
+```text
+Настройки → Связь с Google Календарём (admin, только на localhost)
+  → загрузка client_secret.json Desktop-клиента (POST /settings/google-calendar/credentials)
+    → проверка размера (64 КБ) и полей client_id/installed → config/google_calendar/credentials.json
+  → «Подключить календарь» (POST .../connect) → фоновый поток run_local_server()
+    → браузер сервера открывает вход Google → код на loopback-адресе
+    → token.json + account.txt
+  → страница опрашивает GET .../connect/status и перезагружается
+  → «Проверить связь» (POST .../test-event) → событие на завтра 10:00
+```
 
 ## 9. Где что менять
 
@@ -562,6 +703,19 @@ POST /templates-db/blocks/new
 5. При необходимости добавить пункт меню в `app/templates/base.html` и
    константу `MENU_*` в `core/templating.py` или роутере модуля.
 6. Не добавлять новые зависимости без изменения правил проекта.
+
+### Подключение внешнего сервиса (пример — Google Календарь)
+
+1. Секреты (ключ OAuth-клиента, токен, почта аккаунта) держать в `config/`
+   и в `.gitignore`, в шаблоны и логи их не выводить.
+2. Состояние связи описывать неизменяемым `dataclass` и отдавать странице одним
+   вызовом `get_status()`; исключения не должны ронять рендер.
+3. Долгие операции (вход в Google) запускать в отдельном потоке и опрашивать
+   состояние через `GET .../connect/status`.
+4. Ошибки переводить в текст для нотариуса и подсказку «что проверить» —
+   в `SetupCal.md` уже собран разбор типовых причин.
+5. Инструкцию по настройке на стороне сервиса хранить в корне (`SetupCal.md`)
+   и ссылаться на неё из `README.md`.
 
 ### Новая страница или пункт меню
 
@@ -641,6 +795,16 @@ python scripts/create_admin.py --name "Иванов Иван Иванович" -
   ключами в JS-калькуляторах.
 - **Клиентский расчёт не сохраняется на сервере**: данные живут только в
   `localStorage` браузера.
+- **Google Календарь в режиме Testing**: пока приложение Google Cloud не переведено
+  в `In production` (или не используется Internal-тип для Workspace), refresh-токен
+  живёт около 7 дней — раз в неделю нужно повторять вход. Разбор — `SetupCal.md`,
+  раздел 6.
+- **Вход в Google только с сервера портала**: код подтверждения Google принимает
+  лишь на loopback-адресе, поэтому кнопка «Подключить календарь» работает на
+  `localhost`/`127.0.0.1`; сотрудники с других компьютеров видят статус и события,
+  но не могут переподключить аккаунт.
+- **Ключ и токен Google вне git**: `config/google_calendar/` в `.gitignore`; при
+  переносе портала папку копируют вручную, иначе связь настраивается заново.
 - **SQLite**: один локальный файл `portal.db`, резервная копия делается
   копированием файла при остановленном сервере.
 

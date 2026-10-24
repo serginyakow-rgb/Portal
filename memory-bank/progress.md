@@ -430,6 +430,33 @@
    `assignee_color=None`; в корзине метка на месте, после возврата
    `position` = 0 (без дырки), доска снова с двумя карточками.
 
+25. Связь с Google Календарём (24.10.2026): новый модуль
+   `app/modules/google_calendar/service.py` — загрузка ключа OAuth-клиента типа
+   Desktop в `config/google_calendar/credentials.json` (предел 64 КБ), вход через
+   `InstalledAppFlow.run_local_server()` в фоновом потоке (таймаут 300 с, только
+   на loopback-адресе), сохранение токена и почты аккаунта, `get_status()` без
+   обращения к Google для действующего токена, тестовое событие «Проверка связи
+   с Google Календарём» на завтра, 10:00. В настройках появился раздел
+   «Связь с Google Календарём»: 7 маршрутов (`GET /settings/google-calendar`,
+   загрузка и удаление ключа, connect и `connect/status`, disconnect, test-event),
+   партиал `_google_calendar_panel.html`, опрос состояния в
+   `app/static/js/google-calendar.js`, иконка `icon_calendar` в макросах.
+   Зависимости: `google-api-python-client`, `google-auth-httplib2`,
+   `google-auth-oauthlib`; `config/google_calendar/` добавлен в `.gitignore`.
+   Инструкция — `SetupCal.md` (12 разделов: Google Cloud, экран согласия,
+   Data Access, Desktop-клиент, разбор `403 access_denied` и
+   `redirect_uri_mismatch`, ограничение Testing в 7 дней, диагностика), ссылка —
+   в `README.md`.
+
+26. Публикация на GitHub (24.10.2026): коммит `0104fde` («Google Календарь:
+   подключение аккаунта, панель настроек и инструкция SetupCal.md», 12 файлов,
+   +1444/−4) отправлен в `origin/main` (`3251ce5..0104fde`). Затем обновлена
+   `PROJECT_MAP.md`: модули `settings` и `google_calendar`, 7 маршрутов раздела
+   настроек, счётчики (14 скриптов, 29 шаблонов), ER-схема с `inheritance_tariffs`
+   и `tasks`, сценарий 8.6, техдолг по 7-дневному токену и loopback-входу;
+   записи добавлены в `memory-bank/`. Правки `PROJECT_MAP.md` и `memory-bank/`
+   идут отдельным коммитом поверх `0104fde`.
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

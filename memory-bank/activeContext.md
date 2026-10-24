@@ -1,9 +1,9 @@
 # Активный контекст
 
-_Актуализировано 19.10.2026 после публикации раздела «Настройки» и раздела
-«Пользователи» (коммит `f44e294`, отправлен в `origin/main`). Рабочее дерево
-чистое, локальная ветка совпадает с удалённой; `memory-bank/` отслеживается
-git с `d62e656`._
+_Актуализировано 24.10.2026 после подключения Google Календаря и публикации
+на GitHub (коммит `0104fde`, отправлен в `origin/main`; правки `PROJECT_MAP.md`
+и `memory-bank/` идут отдельным коммитом поверх него). `memory-bank/`
+отслеживается git с `d62e656`._
 История ветки `main` (12 коммитов): `d446500 First commit` → `d62e656` (правки
 калькуляторов, 22 файла, +1495/−57) → `28a0460`, `f086165`, `a23d7ed`, `06f7caf`
 (документация `memory-bank/`) → `2d0ef83` (доли по МСК и нотариальный тариф) →
@@ -16,6 +16,36 @@ git с `d62e656`._
 строки 24–26, `CLOSE_DIVISOR` — 29, `federalBase` — 151, `federalTariff` — 161,
 вызов — 221; старых `CLOSE_COEFFICIENT`/`OTHER_COEFFICIENT` и функции
 `coefficient` в файле нет; файл 293 CRLF, одиночных LF и BOM нет._
+
+## Текущая задача (завершена и опубликована, 24.10.2026): Google Календарь
+
+- Новый модуль `app/modules/google_calendar/service.py`: ключ OAuth-клиента
+  Desktop загружается в `config/google_calendar/credentials.json` (предел 64 КБ,
+  проверка `client_id` и секции `installed`/`web`), токен и почта аккаунта лежат
+  рядом (`token.json`, `account.txt`), вход — `InstalledAppFlow.run_local_server()`
+  в фоновом потоке, таймаут `CONNECT_TIMEOUT_SECONDS = 300`, только loopback
+  (`localhost`, `127.0.0.1`, `::1`).
+- Раздел «Настройки → Связь с Google Календарём»: 7 маршрутов в
+  `app/modules/settings/routes.py` (страница, загрузка и удаление ключа,
+  `connect` и `connect/status`, `disconnect`, `test-event`), партиал
+  `app/templates/_google_calendar_panel.html`, опрос состояния в
+  `app/static/js/google-calendar.js`, иконка `icon_calendar` в `_macros.html`.
+- Зависимости: `google-api-python-client==2.201.0`, `google-auth-httplib2==0.4.4`,
+  `google-auth-oauthlib==1.5.0`. `config/google_calendar/` — в `.gitignore`,
+  ключ и токен в git не попадают.
+- Инструкция `SetupCal.md` (12 разделов): подготовка Google Cloud, включение
+  Calendar API, Google Auth Platform (Branding, Audience/Test users, Data Access
+  со scope `.../auth/calendar`), Desktop-клиент, загрузка ключа, подключение,
+  проверка событием, ограничение Testing (refresh-токен ~7 дней), обслуживание,
+  диагностика (`403 access_denied`, `redirect_uri_mismatch`, `invalid_client`,
+  `accessNotConfigured`, `insufficientPermissions`, истёкший токен, таймаут),
+  чек-листы, безопасность, заметки разработчика. Ссылка — в `README.md`.
+- Проверки: приложение импортируется (64 маршрута), `python -m compileall` без
+  ошибок, `/auth/login` отдаёт `200`, в закоммиченных файлах нет ключей и
+  токенов (поиск по признакам `client_secret`, `refresh_token` и подобным).
+- Открытый вопрос к пользователю: ключ загружен (`has_credentials=True`), но вход
+  Google возвращает `403 access_denied` — проверить Audience (Testing + Test
+  users), Data Access и включённый Calendar API по §2.3 и §4 `SetupCal.md`.
 
 ## Текущая задача (завершена, 23.10.2026): модуль «Задачи»
 
@@ -270,30 +300,27 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
 
 ## Состояние репозитория
 
-- Рабочее дерево: чистое. Все правки 19.10.2026 (настройки и «Пользователи»,
-  общий `calc-core`, макросы шаблонов) закоммичены — `f44e294` («Настройки:
-  раздел „Пользователи“, общий calc-core и макросы шаблонов», 39 файлов,
-  +932/−1152) и отправлены в `origin/main`.
-- Ветка `main` (12 коммитов): `d446500` → `d62e656` (22 файла, +1495/−57,
-  включая `memory-bank/`; до него справочник был untracked) → `28a0460`,
-  `f086165`, `a23d7ed`, `06f7caf` (документация справочника) → `2d0ef83`
-  (доли по МСК и нотариальный тариф) → `d44ce88` (карта проекта) → `cad9aa4`
-  (база заготовок) → `3cac82c` (доли по МСК: статус и знаменатель) →
-  `78630fd` (расчёт и сдача) → `4f744bc` (наследство и недвижимость, профиль
-  и меню) → `f44e294`.
-- `f44e294`: новый модуль `app/modules/settings/` (`routes.py`), партиал
-  `app/templates/_users_panel.html`, шаблоны `settings/`, общий
-  `app/static/js/calc-core.js`, макросы `app/templates/_macros.html`;
-  удалён `app/templates/auth/users.html`; сокращены скрипты калькуляторов
-  и шаблоны базы заготовок.
+- Рабочее дерево: чистое после публикации. Коммит `0104fde` («Google Календарь:
+  подключение аккаунта, панель настроек и инструкция SetupCal.md», 12 файлов,
+  +1444/−4) отправлен в `origin/main`; поверх него идёт коммит с `PROJECT_MAP.md`
+  и `memory-bank/`.
+- Ветка `main` (28 коммитов): `d446500` … `f44e294` (настройки и «Пользователи»)
+  → `90deab6`, `37048a3`, `9684526`, `936e469`, `3251ce5` (раздел «Задачи»,
+  корзина и прокрутка доски, диагностика вне репозитория) → `0104fde`
+  (Google Календарь и `SetupCal.md`).
+- `0104fde`: новый модуль `app/modules/google_calendar/`, партиал
+  `app/templates/_google_calendar_panel.html`, скрипт
+  `app/static/js/google-calendar.js`, маршруты Google Календаря в
+  `app/modules/settings/routes.py` и `settings/index.html`, `SetupCal.md`,
+  раздел «Google Календарь» в `README.md`, зависимости Google и правило
+  `config/google_calendar/` в `.gitignore`.
 - Локальная ветка совпадает с `origin/main`
   (`https://github.com/serginyakow-rgb/Portal.git`, сверять
-  `git ls-remote origin main`); последний содержательный коммит — `f44e294`,
-  документальные правки `memory-bank/` идут поверх него. Force-push
-  не использовался, история линейная.
-- В `.gitignore` — `venv/`, `.env`, `*.db`, `*.log`, `__pycache__/`; `.env`
-  и `*.db` не отслеживаются (в индексе 84 файла). `uvicorn.err` при этом
-  отслеживается и виден публично — см. `techContext.md`, «Известный мусор».
+  `git ls-remote origin main`); force-push не использовался, история линейная.
+- В `.gitignore` — `venv/`, `.env`, `*.db`, `*.log`, `*.err`, `__pycache__/`,
+  `client_secret_*.json`, `config/google_calendar/`, `app/static/_probe.html`.
+  В индексе 103 файла; ключ OAuth-клиента, токен, `.env` и `portal.db` не
+  отслеживаются (проверено `git ls-files`).
 - Отправка идёт через Git Credential Manager (`credential.helper=manager`),
   логин `serginyakow-rgb`.
 
@@ -301,8 +328,10 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
 
 - Ответы на открытые вопросы: минимум 300 ₽ при пустой цене, формула «Итого»
   в дарении, корневой `styles.css`.
-- Убрать `uvicorn.err` из индекса и добавить `*.err` в `.gitignore`
-  (следующий коммит).
 - Поправить docstring `routes.py` («двенадцать сумм, „Оплачено“ и „Сдача“»).
-- Решение по `app/static/_probe.html` (диагностическая страница, роутов нет,
-  отслеживается git с первого коммита).
+- Google Календарь: довести вход до конца (Audience = Testing + Test users,
+  Data Access со scope `.../auth/calendar`) и подтвердить событие в календаре.
+- Решить, нужен ли режим service account или Internal-тип для Workspace, чтобы
+  refresh-токен не истекал через 7 дней.
+- Дополнить `PROJECT_MAP.md` разделом 6 строками о новых калькуляторах
+  (`nasledstvo-*`, `udostoverenie-kopiy`, `tasks/trash.html`).

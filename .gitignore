@@ -18,6 +18,9 @@ __pycache__/
 # Секреты внешних сервисов (OAuth-клиенты Google и т. п.)
 client_secret_*.json
 
+# Ключ OAuth-клиента и токен Google Календаря: только на компьютере портала
+config/google_calendar/
+
 # Локальная диагностика вёрстки (layout probe)
 app/static/_probe.html
 

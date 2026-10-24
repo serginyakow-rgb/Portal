@@ -24,6 +24,13 @@
   --radius: 6px;
   --sidebar-w: 262px;
   --header-h: 66px;
+
+  /* Акценты канбан-доски: насыщенные RGB-компоненты для rgba() */
+  --kb-queue:    70,  95, 135;   /* На очереди — насыщенный серо-синий */
+  --kb-progress:  8,  62, 140;   /* В работе — глубокий синий */
+  --kb-review:  230, 175,  30;   /* Проверка — насыщенное золото */
+  --kb-done:     10, 190, 120;   /* Готово — живой изумруд */
+  --kb-tint: 0.18;               /* уровень прозрачности фона шапки */
 }
 
 * { box-sizing: border-box; }
@@ -624,3 +631,59 @@ button { font-family: inherit; }
   .panel, .chat__messages { padding-left: 16px; padding-right: 16px; }
 }
 
+/* ==========================================================================
+   КАНБАН-ДОСКА
+   ========================================================================== */
+
+/* Заголовок столбца: светлый тон-фон + тёмно-синий текст (контраст AA/AAA) */
+.kb-column__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+
+/* Точка-маркер в цвете столбца — насыщенная, без прозрачности */
+.kb-column__head::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.kb-column__count {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+
+/* Полупрозрачные фоны шапок */
+.kb-column--queue    .kb-column__head { background: rgba(var(--kb-queue),    var(--kb-tint)); }
+.kb-column--progress .kb-column__head { background: rgba(var(--kb-progress), var(--kb-tint)); }
+.kb-column--review   .kb-column__head { background: rgba(var(--kb-review),   var(--kb-tint)); }
+.kb-column--done     .kb-column__head { background: rgba(var(--kb-done),     var(--kb-tint)); }
+
+/* Насыщенные точки-маркеры */
+.kb-column--queue    .kb-column__head::before { background: rgb(var(--kb-queue)); }
+.kb-column--progress .kb-column__head::before { background: rgb(var(--kb-progress)); }
+.kb-column--review   .kb-column__head::before { background: rgb(var(--kb-review)); }
+.kb-column--done     .kb-column__head::before { background: rgb(var(--kb-done)); }
+
+/* Срок в карточке задачи: дата и значок предупреждения — в одной строке */
+.card__due { display: flex; align-items: center; gap: 5px; }
+
+/* Красный треугольник «срок истекает / просрочен»: цвет из палитры внимания */
+.card__due-alert { flex: none; color: var(--warning); }
+
+/* Срок ≤ 1 дня: поле выделяется жирным красным текстом (палитра внимания) */
+.card__due--soon { font-weight: 700; color: var(--warning); }

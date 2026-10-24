@@ -33,6 +33,13 @@
 </svg>
 {%- endmacro %}
 
+{% macro icon_clock(size=16) -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="10"/>
+  <polyline points="12 6 12 12 16 14"/>
+</svg>
+{%- endmacro %}
+
 {% macro icon_eye(size=16) -%}
 <svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/>
@@ -126,6 +133,15 @@
 </svg>
 {%- endmacro %}
 
+{% macro icon_calendar(size=20) -%}
+<svg xmlns="http://www.w3.org/2000/svg" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect width="18" height="18" x="3" y="4" rx="2"/>
+  <line x1="16" x2="16" y1="2" y2="6"/>
+  <line x1="8" x2="8" y1="2" y2="6"/>
+  <line x1="3" x2="21" y1="10" y2="10"/>
+</svg>
+{%- endmacro %}
+
 {# Строка статуса: иконка + текст. id нужен пустым блокам, которые
    заполняет скрипт калькулятора; aria-live сообщает об изменении. #}
 {% macro status_warn(text, id=None) -%}
@@ -134,4 +150,9 @@
 
 {% macro status_done(text) -%}
 <p class="status status--done">{{ icon_done(16) }} {{ text }}</p>
+{%- endmacro %}
+
+{# Ожидание: вход в Google ещё не подтверждён (класс .status--progress) #}
+{% macro status_progress(text) -%}
+<p class="status status--progress">{{ icon_clock(16) }} {{ text }}</p>
 {%- endmacro %}

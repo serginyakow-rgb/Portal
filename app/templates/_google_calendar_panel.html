@@ -1,0 +1,168 @@
+{% from "_macros.html" import status_done, status_warn, status_progress %}
+{# Раздел «Связь с Google Календарём»: ключ OAuth-клиента, подключение и проверка
+   тестовым событием. Адрес действий задаёт страница настроек:
+   google_url = /settings/google-calendar #}
+{% set google_url = google_url|default('/settings/google-calendar') %}
+
+<section class="panel">
+  {# Сообщения о результате действий нотариуса: загрузка ключа, отключение, ошибка #}
+  {% if google_uploaded %}
+  {{ status_done("Ключ OAuth-клиента сохранён. Следующий шаг — подключение к календарю.") }}
+  {% endif %}
+
+  {% if google_deleted %}
+  {{ status_done("Ключ OAuth-клиента и токен удалены: связь с Google Календарём отключена.") }}
+  {% endif %}
+
+  {% if google_disconnected %}
+  {{ status_done("Токен удалён: для работы с календарём подключение нужно выполнить заново.") }}
+  {% endif %}
+
+  {% if google_event %}
+  {{ status_done("Тестовое событие создано: " ~ google_event.title ~ ", " ~ google_event.start) }}
+  {% endif %}
+
+  {% if error %}
+  {{ status_warn(error) }}
+  {% endif %}
+
+  <div class="panel__head">
+    <h2 class="panel__title">Связь с Google Календарём</h2>
+    <span class="panel__hint">События по делам записываются в календарь аккаунта Google</span>
+  </div>
+
+  {# Итог связи: одна строка статуса, дальше — шаги настройки #}
+  {% if google_status and google_status.connected %}
+  {% set account_note = (": " ~ google_status.account) if google_status.account else "" %}
+  {{ status_done("Google Календарь подключён" ~ account_note) }}
+  {% elif google_status and not google_status.libraries_installed %}
+  {{ status_warn("Библиотеки Google не установлены: выполните pip install -r requirements.txt и перезапустите портал.") }}
+  {% elif google_status and not google_status.has_credentials %}
+  {{ status_warn("Ключ OAuth-клиента не загружен: без него подключение к календарю невозможно.") }}
+  {% elif google_status %}
+  {{ status_warn(google_status.message or "Ключ загружен, но подключение к календарю не выполнено.") }}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2 class="panel__title">Ключ OAuth-клиента</h2>
+    <span class="panel__hint">
+      {% if google_status and google_status.has_credentials %}Файл загружен{% else %}Файл не загружен{% endif %}
+    </span>
+  </div>
+
+  {# Загрузка JSON-ключа: enctype обязателен, иначе файл не дойдёт до сервера #}
+  <form class="calc__form" method="post" action="{{ google_url }}/credentials"
+        enctype="multipart/form-data">
+    <div class="field">
+      <label for="google_credentials">Файл client_secret_*.json</label>
+      <input id="google_credentials" name="credentials" type="file"
+             accept=".json,application/json" required>
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Загрузить ключ</button>
+      <span class="panel__hint">
+        Google Cloud Console → APIs &amp; Services → Credentials → OAuth client ID → Download JSON
+      </span>
+    </div>
+  </form>
+
+  {% if google_status and google_status.has_credentials %}
+  <form class="calc__form" method="post" action="{{ google_url }}/credentials/delete">
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="submit">Удалить ключ</button>
+      <span class="panel__hint">Ключ и токен удаляются с компьютера портала</span>
+    </div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2 class="panel__title">Подключение</h2>
+    <span class="panel__hint">Вход в Google — один раз на компьютере с порталом</span>
+  </div>
+
+  {% if google_status and google_status.connected %}
+  <form class="calc__form" method="post" action="{{ google_url }}/disconnect">
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="submit">Отключить календарь</button>
+      <span class="panel__hint">Токен удаляется, ключ OAuth-клиента остаётся</span>
+    </div>
+  </form>
+
+  {% elif google_connect and google_connect.state == 'pending' %}
+  {# Пока нотариус подтверждает вход в браузере, страница опрашивает состояние #}
+  <div class="calc__form" data-google-connect-url="{{ google_url }}/connect/status"
+       data-google-connect-state="pending">
+    {{ status_progress("Ожидаем подтверждение входа в Google: завершите вход в открывшемся окне браузера, страница обновится сама.") }}
+    <p class="panel__hint">
+      Окно Google открывается на компьютере с порталом. Если окно не появилось,
+      нажмите «Подключить календарь» ещё раз: ссылка для входа также печатается
+      в окне сервера портала.
+    </p>
+  </div>
+
+  {% else %}
+    {% if google_connect and google_connect.state == 'error' %}
+    {{ status_warn(google_connect.message or "Не удалось подключиться к Google Календарю") }}
+    {% if google_connect.hint %}
+    <p class="panel__hint">{{ google_connect.hint }}</p>
+    {% endif %}
+    {% endif %}
+
+    {% if not google_status or not google_status.has_credentials %}
+    <p class="panel__hint">Сначала загрузите файл ключа OAuth-клиента в разделе выше.</p>
+    {% elif google_local %}
+    <form class="calc__form" method="post" action="{{ google_url }}/connect">
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit">Подключить календарь</button>
+        <span class="panel__hint">Откроется окно Google; портал ждёт подтверждение до 5 минут</span>
+      </div>
+    </form>
+    {% else %}
+    {{ status_warn("Вход в Google выполняется только на компьютере с порталом: " ~ google_local_url) }}
+    <p class="panel__hint">
+      Откройте этот адрес на сервере портала и нажмите «Подключить календарь».
+      С любого компьютера локальной сети после подключения доступны статус связи,
+      проверка и создание событий.
+    </p>
+    {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2 class="panel__title">Проверка связи</h2>
+    <span class="panel__hint">Тестовое событие на завтра, 10:00</span>
+  </div>
+
+  {% if google_status and google_status.connected %}
+  <form class="calc__form" method="post" action="{{ google_url }}/test-event">
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Создать тестовое событие</button>
+      {% if google_event and google_event.html_link %}
+      <a class="btn btn--ghost" href="{{ google_event.html_link }}" target="_blank"
+         rel="noopener">Открыть в Календаре</a>
+      {% endif %}
+      <span class="panel__hint">Событие появится в основном календаре аккаунта</span>
+    </div>
+  </form>
+  {% else %}
+  <p class="panel__hint">Проверка станет доступна после подключения календаря.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel__head">
+    <h2 class="panel__title">Как это работает</h2>
+  </div>
+  <p class="panel__hint">
+    Вход в Google выполняется один раз на компьютере, где запущен портал: Google
+    принимает код подтверждения только на localhost и отклоняет адреса вида
+    192.168.x.x. Сохранённый токен общий, поэтому с любого компьютера локальной
+    сети доступны статус связи, проверка и создание событий в календаре.
+  </p>
+</section>

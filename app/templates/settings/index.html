@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon_users, icon_archive, icon_percent %}
+{% from "_macros.html" import icon_users, icon_archive, icon_percent, icon_calendar %}
 
 {% block title %}Настройки · Нотариальная контора{% endblock %}
 
@@ -38,6 +38,13 @@
           <span class="menu__text">Региональный тариф для наследства</span>
         </button>
       </form>
+
+      <form method="get" action="/settings/google-calendar">
+        <button class="menu__item {% if settings_section == 'google_calendar' %}is-active{% endif %}" type="submit" title="Связь с Google Календарём">
+          {{ icon_calendar(20) }}
+          <span class="menu__text">Связь с Google Календарём</span>
+        </button>
+      </form>
     </nav>
   </aside>
 
@@ -46,6 +53,8 @@
     {% include "_users_panel.html" %}
     {% elif settings_section == 'inheritance_tariff' %}
     {% include "_inheritance_tariff_panel.html" %}
+    {% elif settings_section == 'google_calendar' %}
+    {% include "_google_calendar_panel.html" %}
     {% else %}
     <section class="panel">
       <p class="panel__hint">Выберите раздел настроек в меню слева.</p>
@@ -53,4 +62,11 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{# Опрос состояния входа в Google: нужен только разделу «Связь с Google Календарём» #}
+{% if settings_section == 'google_calendar' %}
+<script src="{{ url_for('static', path='js/google-calendar.js') }}"></script>
+{% endif %}
 {% endblock %}

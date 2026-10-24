@@ -84,6 +84,17 @@ python scripts/create_admin.py                                   # спроси�
 python scripts/create_admin.py --name "Иванов Иван Иванович" --password "notary-2026"
 ```
 
+## Google Календарь
+
+Раздел **Настройки → Связь с Google Календарём** (`/settings/google-calendar`,
+только администратор): загрузка ключа OAuth-клиента, вход в Google на компьютере
+с порталом, статус связи и проверка тестовым событием.
+
+Полная инструкция — от настроек Google Cloud (Calendar API, экран согласия,
+Test users, scope `.../auth/calendar`, Desktop-клиент) до проверки события в
+портале: [`SetupCal.md`](SetupCal.md). Там же разбор ошибок `403 access_denied`,
+`redirect_uri_mismatch` и ограничение режима Testing (токен на 7 дней).
+
 ## Переменные окружения (.env)
 
 | Переменная | Назначение | По умолчанию |

@@ -3,13 +3,14 @@
 Доступ к разделу открыт только нотариусу (роль ``admin``): сотрудникам
 пункт меню не показывается, а прямой запрос адреса завершается отказом.
 """
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.templating import render
@@ -25,6 +26,7 @@ from app.modules.auth.service import (
     set_marker_color,
     update_user,
 )
+from app.modules.google_calendar import service as google_calendar
 from app.modules.settings.models import InheritanceTariff
 from app.modules.settings.schemas import InheritanceTariffInput
 from app.modules.settings.service import (
@@ -46,6 +48,10 @@ MENU_SETTINGS = "settings"
 # Выбранный раздел в меню самой страницы настроек
 SETTINGS_USERS = "users"
 SETTINGS_INHERITANCE_TARIFF = "inheritance_tariff"
+SETTINGS_GOOGLE_CALENDAR = "google_calendar"
+
+# Адреса действий раздела «Связь с Google Календарём»
+GOOGLE_CALENDAR_URL = "/settings/google-calendar"
 
 
 def _render_settings(
@@ -61,6 +67,14 @@ def _render_settings(
     created: bool = False,
     updated: bool = False,
     deleted: bool = False,
+    google_status: google_calendar.GoogleCalendarStatus | None = None,
+    google_connect: dict[str, Any] | None = None,
+    google_event: dict[str, str] | None = None,
+    google_local: bool = True,
+    google_local_url: str = GOOGLE_CALENDAR_URL,
+    google_uploaded: bool = False,
+    google_deleted: bool = False,
+    google_disconnected: bool = False,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
     """Рендерит страницу настроек с выбранным разделом справа от меню."""
@@ -81,6 +95,15 @@ def _render_settings(
         users_url="/settings/users",
         create_url="/settings/users",
         default_marker_color=DEFAULT_MARKER_COLOR,
+        google_status=google_status,
+        google_url=GOOGLE_CALENDAR_URL,
+        google_connect=google_connect,
+        google_event=google_event,
+        google_local=google_local,
+        google_local_url=google_local_url,
+        google_uploaded=google_uploaded,
+        google_deleted=google_deleted,
+        google_disconnected=google_disconnected,
         status_code=status_code,
     )
 
@@ -470,3 +493,190 @@ async def settings_inheritance_tariff_delete(
         "/settings/inheritance-tariff?deleted=1",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+def _local_calendar_url(request: Request) -> str:
+    """Адрес раздела настроек на самом сервере портала (loopback для Google)."""
+    port = request.url.port
+    host = f"localhost:{port}" if port else "localhost"
+    return f"http://{host}{GOOGLE_CALENDAR_URL}"
+
+
+async def _render_google_calendar_section(
+    request: Request,
+    user: User,
+    *,
+    error: str | None = None,
+    uploaded: bool = False,
+    deleted: bool = False,
+    disconnected: bool = False,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    """Рендерит раздел «Связь с Google Календарём» с текущим состоянием связи.
+
+    Проверка токена и обращение к Google блокирующие, поэтому выполняются в
+    пуле потоков: страница настроек не должна останавливать другие запросы.
+    """
+    status_info = await run_in_threadpool(google_calendar.get_status)
+    connect = await run_in_threadpool(google_calendar.connect_state)
+    last_event = await run_in_threadpool(google_calendar.last_test_event)
+    return _render_settings(
+        request,
+        user,
+        settings_section=SETTINGS_GOOGLE_CALENDAR,
+        error=error,
+        google_status=status_info,
+        google_connect=connect,
+        google_event=last_event,
+        google_local=google_calendar.is_loopback_host(request.url.hostname),
+        google_local_url=_local_calendar_url(request),
+        google_uploaded=uploaded,
+        google_deleted=deleted,
+        google_disconnected=disconnected,
+        status_code=status_code,
+    )
+
+
+@router.get("/settings/google-calendar", response_class=HTMLResponse, response_model=None)
+async def settings_google_calendar_page(
+    request: Request,
+    user: AdminUser,
+    uploaded: bool = False,
+    deleted: bool = False,
+    disconnected: bool = False,
+) -> HTMLResponse:
+    """Раздел «Связь с Google Календарём»: ключ, подключение и проверка событием."""
+    return await _render_google_calendar_section(
+        request,
+        user,
+        uploaded=uploaded,
+        deleted=deleted,
+        disconnected=disconnected,
+    )
+
+
+@router.post(
+    "/settings/google-calendar/credentials",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_google_calendar_upload_credentials(
+    request: Request,
+    user: AdminUser,
+    credentials: Annotated[UploadFile | None, File()] = None,
+) -> HTMLResponse | RedirectResponse:
+    """Сохраняет загруженный ключ OAuth-клиента и сбрасывает прежний токен."""
+    if credentials is None:
+        return await _render_google_calendar_section(
+            request,
+            user,
+            error="Файл ключа не выбран",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Читаем на байт больше предела: так видно, что файл превышает допустимый размер
+    raw = await credentials.read(google_calendar.MAX_CREDENTIALS_SIZE + 1)
+    error = await run_in_threadpool(google_calendar.save_credentials, raw)
+    if error:
+        return await _render_google_calendar_section(
+            request,
+            user,
+            error=error,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return RedirectResponse(
+        f"{GOOGLE_CALENDAR_URL}?uploaded=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/settings/google-calendar/credentials/delete", response_model=None)
+async def settings_google_calendar_delete_credentials(
+    request: Request,
+    user: AdminUser,
+) -> RedirectResponse:
+    """Удаляет ключ OAuth-клиента вместе с токеном: связь разрывается полностью."""
+    await run_in_threadpool(google_calendar.delete_credentials)
+    return RedirectResponse(
+        f"{GOOGLE_CALENDAR_URL}?deleted=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/google-calendar/connect",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_google_calendar_connect(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse | RedirectResponse:
+    """Запускает вход в Google на компьютере, где запущен портал.
+
+    Google принимает код подтверждения только на loopback-адресе сервера,
+    поэтому с других компьютеров сети вход недоступен — им доступны статус,
+    проверка и создание событий по уже сохранённому токену.
+    """
+    if not google_calendar.is_loopback_host(request.url.hostname):
+        return await _render_google_calendar_section(
+            request,
+            user,
+            error=(
+                "Вход в Google выполняется только на компьютере с порталом: "
+                f"откройте {_local_calendar_url(request)} и нажмите «Подключить календарь». "
+                "С остальных компьютеров сети доступны статус, проверка и создание событий."
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    error = await run_in_threadpool(google_calendar.start_connect)
+    if error:
+        return await _render_google_calendar_section(
+            request,
+            user,
+            error=error,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return RedirectResponse(GOOGLE_CALENDAR_URL, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/settings/google-calendar/connect/status", response_model=None)
+async def settings_google_calendar_connect_status(user: AdminUser) -> JSONResponse:
+    """Состояние фонового входа в Google — его опрашивает страница настроек."""
+    return JSONResponse(await run_in_threadpool(google_calendar.connect_state))
+
+
+@router.post("/settings/google-calendar/disconnect", response_model=None)
+async def settings_google_calendar_disconnect(
+    request: Request,
+    user: AdminUser,
+) -> RedirectResponse:
+    """Забывает токен доступа, оставляя загруженный ключ OAuth-клиента."""
+    await run_in_threadpool(google_calendar.disconnect)
+    return RedirectResponse(
+        f"{GOOGLE_CALENDAR_URL}?disconnected=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/google-calendar/test-event",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_google_calendar_test_event(
+    request: Request,
+    user: AdminUser,
+) -> HTMLResponse | RedirectResponse:
+    """Создаёт тестовое событие в календаре: проверка связи без макетов."""
+    try:
+        await run_in_threadpool(google_calendar.create_test_event)
+    except google_calendar.GoogleCalendarError as exc:
+        return await _render_google_calendar_section(
+            request,
+            user,
+            error=str(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return RedirectResponse(GOOGLE_CALENDAR_URL, status_code=status.HTTP_303_SEE_OTHER)

@@ -63,6 +63,15 @@ STATUS_LABELS: dict[str, str] = {
     "done": "Готово",
 }
 STATUS_ORDER: tuple[str, ...] = tuple(STATUS_LABELS)
+
+# Цветовые акценты столбцов: модификаторы kb-* из styles.css (секция «КАНБАН-ДОСКА»).
+# Отдельный словарь, чтобы шаблон подставлял класс в цикле, без четырёх блоков.
+STATUS_CLASSES: dict[str, str] = {
+    "queue": "kb-column--queue",
+    "in_progress": "kb-column--progress",
+    "review": "kb-column--review",
+    "done": "kb-column--done",
+}
 TaskStatus = Literal["queue", "in_progress", "review", "done"]
 
 DEFAULT_CARD_TYPE: TaskCardType = "other"

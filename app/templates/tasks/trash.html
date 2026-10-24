@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon_trash, icon_undo, status_done, status_warn %}
+
+{% block title %}Корзина · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Корзина вынесена с доски на отдельную страницу: ссылка на неё стоит рядом
+   со «Сбросом» в шапке доски. Возврат ставит карточку в конец её прежнего
+   столбца, окончательное удаление доступно только здесь. #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">Корзина</h1>
+    <span class="panel__hint">Карточек: {{ trash_count }}</span>
+    <a class="btn btn--ghost" href="/tasks/" title="Вернуться к доске задач">Назад к доске</a>
+  </div>
+
+  {% if restored %}{{ status_done("Карточка возвращена на доску.") }}{% endif %}
+  {% if purged %}{{ status_done("Карточка удалена окончательно.") }}{% endif %}
+  {% if error %}{{ status_warn(error) }}{% endif %}
+
+  {% if trash %}
+  <div class="cards">
+    {% for task in trash %}
+    <article class="card card--task">
+      {# Метка исполнителя: та же полоса, что и на доске #}
+      {% if task.assignee_color %}
+      <svg class="card__marker" aria-hidden="true" focusable="false">
+        <rect width="100%" height="100%" rx="1.5" fill="{{ task.assignee_color }}"></rect>
+      </svg>
+      {% endif %}
+
+      <div class="card__title">{{ task.title }}</div>
+      <p class="card__meta">Удалена: {{ task.deleted_at.strftime("%d.%m.%Y %H:%M") }}</p>
+
+      <div class="card__foot">
+        <span class="card__meta">{{ task.assignee_name or "Без исполнителя" }}</span>
+
+        <div class="calc__row">
+          <form method="post" action="/tasks/restore/{{ task.id }}">
+            <button class="btn btn--ghost" type="submit"
+                    title="Вернуть карточку на доску">{{ icon_undo() }}</button>
+          </form>
+
+          <form method="post" action="/tasks/purge/{{ task.id }}"
+                data-confirm="Удалить карточку «{{ task.title }}» навсегда?">
+            <button class="btn btn--ghost" type="submit"
+                    title="Удалить карточку навсегда">{{ icon_trash() }}</button>
+          </form>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="panel__hint">Корзина пуста.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/tasks.js') }}"></script>
+{% endblock %}

@@ -202,6 +202,59 @@
     });
   }
 
+  /* ── Фильтры доски ─────────────────────────────────────────────────────── */
+
+  // Фильтр применяется без кнопки «Показать»: смена исполнителя — сразу,
+  // поиск — при выходе из поля (Tab, клик мимо) и по Enter. Если строку не
+  // меняли, лишней перезагрузки нет. Кнопки остаются для браузера без
+  // скрипта: сервер обрабатывает ту же GET-форму.
+  var filterForm = document.querySelector(".tasks-filter");
+  var assigneeSelect = filterForm ? filterForm.querySelector('select[name="assignee"]') : null;
+  var searchField = filterForm ? filterForm.querySelector('input[name="q"]') : null;
+
+  // Строка, которая сейчас показана на доске: с ней сравниваем поле при выходе
+  var shownQuery = searchField ? searchField.value.trim() : "";
+
+  // Отправка одна на страницу: повторный вызов (blur после Enter) игнорируется
+  var filtersSent = false;
+
+  function applyFilters() {
+    if (!filterForm || filtersSent) {
+      return;
+    }
+    filtersSent = true;
+    filterForm.submit();
+  }
+
+  if (assigneeSelect) {
+    assigneeSelect.addEventListener("change", applyFilters);
+  }
+
+  if (searchField) {
+    // Enter: перехватываем отправку сами, чтобы blur после неё не отправил
+    // форму второй раз. isComposing — Enter завершает ввод через IME, тогда
+    // искать ещё рано
+    searchField.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && !event.isComposing) {
+        event.preventDefault();
+        applyFilters();
+      }
+    });
+
+    searchField.addEventListener("focusout", function (event) {
+      if (searchField.value.trim() === shownQuery) {
+        return;
+      }
+      // Ушли на ссылку «Сброс»: она сама показывает все карточки, наша
+      // перезагрузка с поиском отменила бы этот переход
+      var next = event.relatedTarget;
+      if (next && typeof next.closest === "function" && next.closest("a")) {
+        return;
+      }
+      applyFilters();
+    });
+  }
+
   /* ── Модальное окно создания карточки ──────────────────────────────────── */
 
   // Открывает <dialog> и ставит фокус в первое поле. Возвращает false, если

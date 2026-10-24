@@ -13,6 +13,10 @@ __pycache__/
 
 # Логи запуска
 *.log
+*.err
+
+# Секреты внешних сервисов (OAuth-клиенты Google и т. п.)
+client_secret_*.json
 
 # Редакторы / ОС
 .vscode/

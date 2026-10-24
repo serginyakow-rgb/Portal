@@ -1,14 +1,15 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon_plus, icon_edit, icon_trash, icon_archive, icon_undo,
-                               status_done, status_warn %}
+{% from "_macros.html" import icon_plus, icon_edit, icon_archive,
+                               status_done, status_warn, icon_due_alert %}
 
 {% block title %}Задачи · Нотариальная контора{% endblock %}
 
 {% block content %}
-{# Верхняя панель: заголовок, кнопка новой карточки и фильтр по исполнителю —
-   всё в одной строке шапки. Фильтр — обычная GET-форма: выбранный сотрудник
-   остаётся в адресе (?assignee=), и после перезагрузки доска показывает
-   только его карточки. #}
+{# Верхняя панель: заголовок, кнопка новой карточки и фильтры — всё в одной
+   строке шапки. Фильтр — обычная GET-форма: выбранный сотрудник и поисковая
+   строка остаются в адресе (?assignee=…&q=…), поэтому после перезагрузки
+   доска показывает те же карточки. Поиск идёт по заголовку, контакту
+   и описанию карточки без учёта регистра. #}
 <section class="panel panel--tasks">
   <div class="panel__head">
     <h1 class="panel__title">Задачи</h1>
@@ -18,41 +19,46 @@
     <form class="tasks-filter" method="get" action="/tasks/">
       <label for="assignee">Исполнитель</label>
       <select id="assignee" name="assignee">
-        <option value="">Все сотрудники</option>
+        <option value=""{% if not assignee_id %} selected{% endif %}>Все сотрудники</option>
         {% for employee in users %}
         <option value="{{ employee.id }}"{% if employee.id == assignee_id %} selected{% endif %}>{{ employee.full_name }}</option>
         {% endfor %}
       </select>
+      <label for="search">Поиск</label>
+      <input id="search" name="q" type="search" value="{{ query }}" autocomplete="off"
+             placeholder="Заголовок, контакт, описание">
       <button class="btn btn--primary" type="submit">Показать</button>
-      <a class="btn btn--ghost" href="/tasks/" title="Показать карточки всех сотрудников">Сброс</a>
+      <a class="btn btn--ghost" href="/tasks/" title="Сбросить фильтры и показать все карточки">Сброс</a>
+      <a class="btn btn--ghost" href="/tasks/trash" title="Удалённые карточки">Корзина</a>
     </form>
   </div>
 
   {% if saved %}{{ status_done("Изменения сохранены.") }}{% endif %}
   {% if deleted %}{{ status_done("Карточка убрана в корзину.") }}{% endif %}
-  {% if restored %}{{ status_done("Карточка возвращена на доску.") }}{% endif %}
-  {% if purged %}{{ status_done("Карточка удалена окончательно.") }}{% endif %}
   {% if error %}{{ status_warn(error) }}{% endif %}
 </section>
 
 {# Доска: четыре столбца в порядке STATUS_ORDER. Карточка несёт идентификатор,
    столбец и позицию (data-task-*), по ним js/tasks.js отправляет /tasks/move/{id};
-   приёмник перетаскивания — блок .board__cards (data-board-cards). #}
+   приёмник перетаскивания — блок .board__cards (data-board-cards).
+   В каждом столбце карточки идут по возрастанию срока (list_board): без срока —
+   в конце, при одинаковых сроках — в порядке ручной позиции. #}
 <div class="board" data-board>
   {% for status_key in status_order %}
-  <section class="board__column" data-board-column data-status="{{ status_key }}">
-    <div class="board__head">
+  <section class="board__column {{ status_classes[status_key] }}" data-board-column data-status="{{ status_key }}">
+    <div class="board__head kb-column__head">
       <h2 class="board__title">{{ status_labels[status_key] }}</h2>
-      <span class="board__count">{{ columns[status_key]|length }}</span>
+      <span class="board__count kb-column__count">{{ columns[status_key]|length }}</span>
     </div>
 
     <div class="board__cards" data-board-cards>
       {% for task in columns[status_key] %}
-      <article class="card board__card" draggable="true"
+      <article class="card card--task board__card" draggable="true"
                data-task-id="{{ task.id }}" data-task-status="{{ task.status }}"
                data-task-position="{{ task.position }}">
-        {# Метка исполнителя: полоса на левой грани в цвет его метки.
-           Цвет — атрибут fill (inline-стили в шаблонах запрещены) #}
+        {# Метка исполнителя: полоса 10px во всю высоту левой грани, углы
+           скруглены как у карточки (.card--task .card__marker). Цвет —
+           атрибут fill (inline-стили в шаблонах запрещены) #}
         {% if task.assignee_color %}
         <svg class="card__marker" aria-hidden="true" focusable="false">
           <rect width="100%" height="100%" rx="1.5" fill="{{ task.assignee_color }}"></rect>
@@ -61,7 +67,12 @@
 
         <div class="card__title">{{ task.title }}</div>
         {% if task.contact %}<p class="card__meta">{{ task.contact }}</p>{% endif %}
-        {% if task.due_date %}<p class="card__meta">Срок: {{ task.due_date.strftime("%d.%m.%Y") }}</p>{% endif %}
+        {# Срок показывается всегда; «не задан» — когда дата в карточке пустая.
+           Если до срока сутки или меньше (включая просроченные карточки),
+           поле выделяется жирным красным текстом и получает значок. #}
+        {% set days_left = (task.due_date - today).days if task.due_date else none %}
+        {% set due_soon = days_left is not none and days_left <= 1 %}
+        <p class="card__meta card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</p>
 
         <div class="card__foot">
           <span class="card__meta">{{ task.assignee_name or "Без исполнителя" }}</span>
@@ -87,52 +98,6 @@
   </section>
   {% endfor %}
 </div>
-{# Корзина: карточки с отметкой удаления. Возврат ставит карточку в конец её
-   прежнего столбца, окончательное удаление доступно только отсюда. #}
-<section class="panel">
-  <div class="panel__head">
-    <h2 class="panel__title">Корзина</h2>
-    <span class="panel__hint">Карточек: {{ trash_count }}</span>
-  </div>
-
-  {% if trash %}
-  <div class="cards">
-    {% for task in trash %}
-    <article class="card">
-      {# Метка исполнителя: та же полоса, что и на доске #}
-      {% if task.assignee_color %}
-      <svg class="card__marker" aria-hidden="true" focusable="false">
-        <rect width="100%" height="100%" rx="1.5" fill="{{ task.assignee_color }}"></rect>
-      </svg>
-      {% endif %}
-
-      <div class="card__title">{{ task.title }}</div>
-      <p class="card__meta">Удалена: {{ task.deleted_at.strftime("%d.%m.%Y %H:%M") }}</p>
-
-      <div class="card__foot">
-        <span class="card__meta">{{ task.assignee_name or "Без исполнителя" }}</span>
-
-        <div class="calc__row">
-          <form method="post" action="/tasks/restore/{{ task.id }}">
-            <button class="btn btn--ghost" type="submit"
-                    title="Вернуть карточку на доску">{{ icon_undo() }}</button>
-          </form>
-
-          <form method="post" action="/tasks/purge/{{ task.id }}"
-                data-confirm="Удалить карточку «{{ task.title }}» навсегда?">
-            <button class="btn btn--ghost" type="submit"
-                    title="Удалить карточку навсегда">{{ icon_trash() }}</button>
-          </form>
-        </div>
-      </div>
-    </article>
-    {% endfor %}
-  </div>
-  {% else %}
-  <p class="panel__hint">Корзина пуста.</p>
-  {% endif %}
-</section>
-
 {# Модальное окно создания: поля — тот же файл, что и на странице правки.
    Без скрипта ссылка «Новая карточка» открывает обычную страницу /tasks/create. #}
 <dialog class="modal" id="task-modal" aria-labelledby="task-modal-title">

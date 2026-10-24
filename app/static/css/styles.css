@@ -24,6 +24,13 @@
   --radius: 6px;
   --sidebar-w: 262px;
   --header-h: 66px;
+
+  /* Акценты канбан-доски: насыщенные RGB-компоненты для rgba() */
+  --kb-queue:    70,  95, 135;   /* На очереди — насыщенный серо-синий */
+  --kb-progress:  8,  62, 140;   /* В работе — глубокий синий */
+  --kb-review:  230, 175,  30;   /* Проверка — насыщенное золото */
+  --kb-done:     10, 190, 120;   /* Готово — живой изумруд */
+  --kb-tint: 0.18;               /* уровень прозрачности фона шапки */
 }
 
 * { box-sizing: border-box; }
@@ -334,10 +341,10 @@ button { font-family: inherit; }
 .panel--db-search > .calc__form { padding: 6px 18px 0; }
 
 /* Раздел «Задачи»: шапка панели несёт заголовок, кнопку «Новая карточка»
-   и фильтр по исполнителю — всё в одной строке. Кнопка стоит сразу
+   и фильтры (исполнитель + поиск) — всё в одной строке. Кнопка стоит сразу
    за заголовком и по высоте не отличается от «Показать» (.btn, 41px);
-   фильтр прижат к правому краю, поэтому при нехватке места переносится
-   на новую строку целиком (flex-wrap) */
+   фильтр идёт следующим, без прижатия к правому краю, и при нехватке
+   места переносится на новую строку целиком (flex-wrap) */
 .panel--tasks { padding-bottom: 12px; }
 .panel--tasks > .panel__head {
   margin-bottom: 4px;
@@ -352,16 +359,15 @@ button { font-family: inherit; }
    против 41px у «Показать» */
 .panel--tasks > .panel__head .btn { line-height: normal; }
 
-/* Фильтр в шапке: подпись слева от списка, список 200px и две кнопки.
-   Стили списка повторяют .field select — в шапке нет обёртки .field.
-   flex-wrap нужен для телефона: пара «список + Показать» шире панели,
-   без переноса фильтр вылезал бы за её правый край */
+/* Фильтр в шапке: подписи слева от полей, список 200px, поиск 260px
+   и две кнопки. Стили полей повторяют .field select — в шапке нет
+   обёртки .field. flex-wrap нужен для телефона: без переноса фильтр
+   вылезал бы за правый край панели */
 .tasks-filter {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
 }
 .tasks-filter label {
   font-size: 12px;
@@ -381,6 +387,22 @@ button { font-family: inherit; }
   transition: border-color .2s ease, box-shadow .2s ease;
 }
 .tasks-filter select:focus {
+  outline: none;
+  border-color: var(--navy);
+  box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
+}
+.tasks-filter input {
+  width: 260px;
+  padding: 10px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.tasks-filter input:focus {
   outline: none;
   border-color: var(--navy);
   box-shadow: 0 0 0 3px rgba(10, 42, 77, 0.10);
@@ -414,13 +436,14 @@ button { font-family: inherit; }
 .card__foot .btn { padding: 5px 9px; }
 .card__foot .btn svg { width: 13px; height: 13px; }
 
-/* Метка исполнителя на левой грани карточки «Задач»: полоса 3px со
+/* Метка исполнителя на левой грани карточки «Задач»: короткая полоса (3px) со
    скруглением справа — тот же приём, что у активного пункта меню
-   (.menu__item::before). Цвет — marker_color исполнителя; он приходит
-   атрибутом fill, потому что inline-стили в шаблонах запрещены (так же
-   выводится метка сотрудника в «Пользователях»). Карточка без исполнителя
-   полосы не получает. Полоса декоративная: клики и перетаскивание идут
-   сквозь неё (pointer-events: none) */
+   (.menu__item::before). У карточек задач её геометрию переопределяет
+   .card--task ниже. Цвет — marker_color исполнителя; он приходит атрибутом
+   fill, потому что inline-стили в шаблонах запрещены (так же выводится метка
+   сотрудника в «Пользователях»). Карточка без исполнителя полосы не получает.
+   Полоса декоративная: клики и перетаскивание идут сквозь неё
+   (pointer-events: none) */
 .card__marker {
   position: absolute;
   left: 0;
@@ -428,6 +451,20 @@ button { font-family: inherit; }
   width: 3px;
   height: calc(100% - 16px);
   pointer-events: none;
+}
+
+/* Исключение для раздела «Задачи»: у карточек дел (доска и корзина) полоса на
+   левой грани — 10px от верхней до нижней границы. Левые углы скруглены как у
+   самой карточки: внутренний радиус = --radius (6px) минус её рамка 1px;
+   overflow: hidden обрезает <rect> по этому радиусу, поэтому полоса не выходит
+   за скруглённый контур. Правило привязано к .card--task — карточки других
+   разделов его не получают */
+.card--task .card__marker {
+  top: 0;
+  width: 10px;
+  height: 100%;
+  border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px);
+  overflow: hidden;
 }
 
 .card__title { font-size: 14.5px; font-weight: 600; color: var(--text); }
@@ -954,23 +991,28 @@ button { font-family: inherit; }
 /* Полосы прокрутки в тон интерфейсу */
 .workspace,
 .chat__messages,
-.sidebar { scrollbar-color: #AEB6C0 transparent; }   /* Firefox */
+.sidebar,
+.board__cards { scrollbar-color: #AEB6C0 transparent; }   /* Firefox */
 .workspace::-webkit-scrollbar,
 .chat__messages::-webkit-scrollbar,
-.sidebar::-webkit-scrollbar { width: 10px; }
+.sidebar::-webkit-scrollbar,
+.board__cards::-webkit-scrollbar { width: 10px; }
 .workspace::-webkit-scrollbar-track,
 .chat__messages::-webkit-scrollbar-track,
-.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-track,
+.board__cards::-webkit-scrollbar-track { background: transparent; }
 .workspace::-webkit-scrollbar-thumb,
 .chat__messages::-webkit-scrollbar-thumb,
-.sidebar::-webkit-scrollbar-thumb {
+.sidebar::-webkit-scrollbar-thumb,
+.board__cards::-webkit-scrollbar-thumb {
   background: #AEB6C0;
   border: 3px solid transparent;
   border-radius: 8px;
   background-clip: content-box;
 }
 .workspace::-webkit-scrollbar-thumb:hover,
-.chat__messages::-webkit-scrollbar-thumb:hover { background: var(--navy); background-clip: content-box; }
+.chat__messages::-webkit-scrollbar-thumb:hover,
+.board__cards::-webkit-scrollbar-thumb:hover { background: var(--navy); background-clip: content-box; }
 
 /* ==========================================================================
    Задачи: канбан-доска, чек-лист, модальное окно
@@ -978,12 +1020,18 @@ button { font-family: inherit; }
 
 /* Доска — четыре столбца по числу статусов (STATUS_ORDER). Ширина столбцов
    подстраивается под экран; на узком месте появляется горизонтальная
-   прокрутка самих столбцов, карточки при этом не сжимаются. */
+   прокрутка самих столбцов, карточки при этом не сжимаются.
+   Высота доски ограничена рабочей областью (.workspace во второй строке 1fr),
+   а строка сетки minmax(0, 1fr) не даёт колонкам растянуть её по содержимому:
+   поэтому каждый столбец прокручивается отдельно, а его заголовок стоит
+   на месте — он лежит вне прокручиваемого .board__cards. */
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
+  min-height: 0;
   padding: 22px 28px;
   border-bottom: 1px solid var(--divider);
   overflow-x: auto;
@@ -994,6 +1042,9 @@ button { font-family: inherit; }
   flex-direction: column;
   gap: 10px;
   min-width: 0;
+  /* столбец не выше доски: лишние карточки уходят в прокрутку .board__cards */
+  max-height: 100%;
+  overflow: hidden;
   padding: 12px;
   background: var(--surface);
   border: 1px solid var(--divider);
@@ -1004,6 +1055,7 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex: none;                       /* заголовок не сжимается и не прокручивается */
   gap: 8px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--divider);
@@ -1027,14 +1079,20 @@ button { font-family: inherit; }
   color: var(--muted);
 }
 
-/* Приёмник перетаскивания: минимальная высота держит полосу видимой,
-   чтобы карточку можно было бросить и в пустой столбец. Подсветку
-   рамкой ставит js/tasks.js классом .is-over */
+/* Приёмник перетаскивания и одновременно прокручиваемая часть столбца:
+   min-height держит полосу видимой, чтобы карточку можно было бросить
+   и в пустой столбец, а при переполнении включается своя вертикальная
+   прокрутка — заголовок столбца при этом остаётся на месте.
+   overscroll-behavior не даёт прокрутке «перетекать» на страницу.
+   Подсветку рамкой ставит js/tasks.js классом .is-over */
 .board__cards {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 10px;
   min-height: 56px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-radius: var(--radius);
   outline: 2px dashed transparent;
   outline-offset: 2px;
@@ -1144,3 +1202,59 @@ button { font-family: inherit; }
   .calc--raschet-i-sdacha { grid-template-columns: 340px 340px; }
 }
 
+/* ==========================================================================
+   КАНБАН-ДОСКА
+   ========================================================================== */
+
+/* Заголовок столбца: светлый тон-фон + тёмно-синий текст (контраст AA/AAA) */
+.kb-column__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--divider);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+
+/* Точка-маркер в цвете столбца — насыщенная, без прозрачности */
+.kb-column__head::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.kb-column__count {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+
+/* Полупрозрачные фоны шапок */
+.kb-column--queue    .kb-column__head { background: rgba(var(--kb-queue),    var(--kb-tint)); }
+.kb-column--progress .kb-column__head { background: rgba(var(--kb-progress), var(--kb-tint)); }
+.kb-column--review   .kb-column__head { background: rgba(var(--kb-review),   var(--kb-tint)); }
+.kb-column--done     .kb-column__head { background: rgba(var(--kb-done),     var(--kb-tint)); }
+
+/* Насыщенные точки-маркеры */
+.kb-column--queue    .kb-column__head::before { background: rgb(var(--kb-queue)); }
+.kb-column--progress .kb-column__head::before { background: rgb(var(--kb-progress)); }
+.kb-column--review   .kb-column__head::before { background: rgb(var(--kb-review)); }
+.kb-column--done     .kb-column__head::before { background: rgb(var(--kb-done)); }
+
+/* Срок в карточке задачи: дата и значок предупреждения — в одной строке */
+.card__due { display: flex; align-items: center; gap: 5px; }
+
+/* Красный треугольник «срок истекает / просрочен»: цвет из палитры внимания */
+.card__due-alert { flex: none; color: var(--warning); }
+
+/* Срок ≤ 1 дня: поле выделяется жирным красным текстом (палитра внимания) */
+.card__due--soon { font-weight: 700; color: var(--warning); }

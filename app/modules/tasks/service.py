@@ -101,17 +101,47 @@ async def _next_position(db: AsyncSession, status: str) -> int:
     return 0 if last is None else last + 1
 
 
+def _matches_query(task: Task, needle: str) -> bool:
+    """Совпадение поисковой строки хотя бы с одним полем карточки.
+
+    Ищем по заголовку, контакту и описанию без учёта регистра. Сравнение
+    идёт в Python: SQLite приводит регистр только у латиницы, поэтому
+    LIKE по запросу «дкп» не нашёл бы карточку «ДКП».
+    """
+    fields = (task.title, task.contact, task.description)
+    return any(needle in (value or "").casefold() for value in fields)
+
+
 async def list_board(
     db: AsyncSession,
     *,
     assignee_id: int | None = None,
+    query: str = "",
 ) -> list[TaskListItem]:
-    """Карточки доски: только неудалённые, при фильтре — карточки одного исполнителя."""
+    """Карточки доски в порядке показа: только неудалённые, по сроку.
+
+    В каждом столбце срок идёт по возрастанию, карточки без срока («не задан»)
+    стоят в конце; при одинаковых сроках сохраняется ручной порядок
+    перетаскивания (position). Фильтры — исполнитель и поиск.
+    """
     stmt = select(Task).where(Task.deleted_at.is_(None))
     if assignee_id is not None:
         stmt = stmt.where(Task.assignee_id == assignee_id)
-    result = await db.execute(stmt.order_by(Task.position, Task.id))
-    return [_to_list_item(task) for task in result.scalars().all()]
+    result = await db.execute(
+        stmt.order_by(
+            # IS NULL даёт 0 у карточек со сроком и 1 у пустых — пустые в конце
+            Task.due_date.is_(None),
+            Task.due_date,
+            Task.position,
+            Task.id,
+        )
+    )
+    tasks = list(result.scalars().all())
+    # Пустая строка (поле поиска не заполнено) ничего не отсеивает
+    needle = query.strip().casefold()
+    if needle:
+        tasks = [task for task in tasks if _matches_query(task, needle)]
+    return [_to_list_item(task) for task in tasks]
 
 
 async def list_trash(db: AsyncSession) -> list[TaskListItem]:

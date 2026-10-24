@@ -3,6 +3,7 @@
 Префикс адресов (/tasks) задаётся при подключении роутера в app/main.py,
 поэтому внутри модуля пути указаны без префикса.
 """
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -19,6 +20,7 @@ from app.modules.tasks.schemas import (
     CARD_TYPE_CHECKLISTS,
     CARD_TYPE_LABELS,
     DEFAULT_CARD_TYPE,
+    STATUS_CLASSES,
     STATUS_LABELS,
     STATUS_ORDER,
     TaskCreate,
@@ -61,6 +63,20 @@ def _to_int(value: str | None) -> int:
         return 0
 
 
+def _filter_assignee(value: str | None) -> int | None:
+    """Исполнитель из фильтра доски; пустое значение — все сотрудники.
+
+    Значение приходит из адреса строкой: пустой пункт списка («Все
+    сотрудники») раньше попадал в int-параметр FastAPI, и доска отвечала
+    ошибкой 422 int_parsing вместо всех карточек. Мусор в адресе тоже
+    считаем отсутствием фильтра.
+    """
+    try:
+        return int(value) if value and value.strip() else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _checked_items(names: list[str] | None) -> dict[str, bool]:
     """Отмеченные пункты чек-листа: чужие для типа пункты отбросит схема."""
     return {name: True for name in names or []}
@@ -72,19 +88,18 @@ async def _render_board(
     user: User,
     *,
     assignee_id: int | None = None,
+    query: str = "",
     saved: bool = False,
     deleted: bool = False,
-    restored: bool = False,
-    purged: bool = False,
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
-    """Рендерит доску: столбцы, фильтр по исполнителю и корзину."""
+    """Рендерит доску: столбцы и фильтр по исполнителю."""
     users = await list_users(db)
     # Неизвестный фильтр (сотрудника удалили) сбрасываем: доска показывается целиком
     if assignee_id is not None and all(employee.id != assignee_id for employee in users):
         assignee_id = None
-    tasks = await list_board(db, assignee_id=assignee_id)
+    tasks = await list_board(db, assignee_id=assignee_id, query=query)
     return render(
         request,
         "tasks/index.html",
@@ -93,15 +108,39 @@ async def _render_board(
         columns=group_by_status(tasks),
         status_labels=STATUS_LABELS,
         status_order=STATUS_ORDER,
+        status_classes=STATUS_CLASSES,
+        today=date.today(),
         users=users,
         assignee_id=assignee_id,
+        query=query,
         card_types=CARD_TYPE_LABELS,
         checklists=CARD_TYPE_CHECKLISTS,
         default_card_type=DEFAULT_CARD_TYPE,
-        trash=await list_trash(db),
-        trash_count=await count_trash(db),
         saved=saved,
         deleted=deleted,
+        error=error,
+        status_code=status_code,
+    )
+
+
+async def _render_trash(
+    request: Request,
+    db: AsyncSession,
+    user: User,
+    *,
+    restored: bool = False,
+    purged: bool = False,
+    error: str | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    """Рендерит страницу корзины: удалённые карточки, возврат и удаление."""
+    return render(
+        request,
+        "tasks/trash.html",
+        user=user,
+        active_menu=MENU_TASKS,
+        trash=await list_trash(db),
+        trash_count=await count_trash(db),
         restored=restored,
         purged=purged,
         error=error,
@@ -154,23 +193,33 @@ async def index_page(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     user: CurrentUser,
-    assignee: int | None = None,
+    assignee: str = "",
+    q: str = "",
     saved: bool = False,
     deleted: bool = False,
-    restored: bool = False,
-    purged: bool = False,
 ) -> HTMLResponse:
-    """Доска задач: четыре столбца, фильтр по исполнителю и корзина."""
+    """Доска задач: четыре столбца и фильтры (исполнитель и поиск)."""
     return await _render_board(
         request,
         db,
         user,
-        assignee_id=assignee,
+        assignee_id=_filter_assignee(assignee),
+        query=q,
         saved=saved,
         deleted=deleted,
-        restored=restored,
-        purged=purged,
     )
+
+
+@router.get("/trash", response_class=HTMLResponse, response_model=None)
+async def trash_page(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    restored: bool = False,
+    purged: bool = False,
+) -> HTMLResponse:
+    """Корзина: удалённые карточки, возврат на доску и окончательное удаление."""
+    return await _render_trash(request, db, user, restored=restored, purged=purged)
 
 
 @router.get("/create", response_class=HTMLResponse, response_model=None)
@@ -386,7 +435,7 @@ async def task_restore(
     """Возвращает карточку из корзины в конец её столбца."""
     task = await get_task(db, task_id)
     if task is None:
-        return await _render_board(
+        return await _render_trash(
             request,
             db,
             user,
@@ -395,7 +444,7 @@ async def task_restore(
         )
     if task.deleted_at is not None:
         await restore_task(db, task)
-    return RedirectResponse("/tasks/?restored=1", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/tasks/trash?restored=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/purge/{task_id}", response_class=HTMLResponse, response_model=None)
@@ -408,7 +457,7 @@ async def task_purge(
     """Удаляет карточку из корзины окончательно: активную карточку не трогает."""
     task = await get_task(db, task_id)
     if task is None:
-        return await _render_board(
+        return await _render_trash(
             request,
             db,
             user,
@@ -416,7 +465,7 @@ async def task_purge(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if task.deleted_at is None:
-        return await _render_board(
+        return await _render_trash(
             request,
             db,
             user,
@@ -424,7 +473,7 @@ async def task_purge(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     await purge_task(db, task)
-    return RedirectResponse("/tasks/?purged=1", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/tasks/trash?purged=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/move/{task_id}", response_model=None)

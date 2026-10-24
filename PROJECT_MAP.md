@@ -93,13 +93,13 @@ Portal/
 │   │   ├── auth/                login.html, users.html, profile.html
 │   │   ├── dashboard/           index.html
 │   │   ├── calculators/         index + 6 страниц + _block_template.html
-│   │   ├── tasks/               index.html — доска, form.html — карточка, _form_fields.html — поля
+│   │   ├── tasks/               index.html — доска, trash.html — корзина,
+│   │   │                        form.html — карточка, _form_fields.html — поля
 │   │   └── templates_db/        index, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
 │       ├── img/logo.jpg
-│       ├── js/                  8 клиентских скриптов
-│       └── _probe.html          диагностическая страница, не часть портала
+│       └── js/                  8 клиентских скриптов
 ├── clinerules/
 │   ├── 01-carcass.md            стек, структура, запреты
 │   └── 02-calculators.md        правила и эталоны калькуляторов
@@ -113,7 +113,7 @@ Portal/
 ├── .env.example                 шаблон настроек
 ├── portal.db                    локальная SQLite (не в git)
 ├── uvicorn.log                  лог запуска (игнорируется)
-└── uvicorn.err                  баннер запуска (отслеживается git)
+└── uvicorn.err                  баннер запуска (игнорируется)
 ```
 
 `venv/`, `__pycache__/`, `.env`, `*.db` и `*.log` исключены через `.gitignore`.
@@ -295,14 +295,15 @@ Portal/
 
 | Метод | Путь | Доступ | Обработчик | Шаблон / результат |
 | --- | --- | --- | --- | --- |
-| GET | `/tasks/` | авторизован | `index_page` | `tasks/index.html` — доска, фильтр `?assignee=`, корзина |
+| GET | `/tasks/` | авторизован | `index_page` | `tasks/index.html` — доска, фильтры `?assignee=`, `?q=` |
+| GET | `/tasks/trash` | авторизован | `trash_page` | `tasks/trash.html` — корзина, флаги `?restored=`, `?purged=` |
 | GET | `/tasks/create` | авторизован | `task_create_form` | `tasks/form.html` — новая карточка (`?card_type=`) |
 | POST | `/tasks/create` | авторизован | `task_create` | создание в конец «На очереди», `303` на `?saved=1` |
 | GET | `/tasks/update/{task_id}` | авторизован | `task_edit_form` | `tasks/form.html` с текущими значениями; нет карточки — доска `404` |
 | POST | `/tasks/update/{task_id}` | авторизован | `task_update` | сохранение полей (столбец не меняется), `303` на `?saved=1` |
 | POST | `/tasks/delete/{task_id}` | авторизован | `task_delete` | в корзину (`deleted_at`), `303` на `?deleted=1` |
-| POST | `/tasks/restore/{task_id}` | авторизован | `task_restore` | из корзины в конец столбца, `303` на `?restored=1` |
-| POST | `/tasks/purge/{task_id}` | авторизован | `task_purge` | окончательное удаление только из корзины (иначе `400`) |
+| POST | `/tasks/restore/{task_id}` | авторизован | `task_restore` | из корзины в конец столбца, `303` на `/tasks/trash?restored=1` |
+| POST | `/tasks/purge/{task_id}` | авторизован | `task_purge` | окончательное удаление только из корзины (иначе `400`), `303` на `/tasks/trash?purged=1` |
 | POST | `/tasks/move/{task_id}` | авторизован | `task_move` | JSON `{status, position}` → `{"ok": true}`; нет карточки — `404` |
 
 Доска и корзина собираются сервисом (`list_board`, `group_by_status`,
@@ -325,6 +326,19 @@ Portal/
 выводит inline-SVG `.card__marker` с `<rect fill="…">` (inline-стили
 в шаблонах запрещены — так же выводится метка в `_users_panel.html`).
 У карточки без исполнителя полосы нет.
+
+Корзина живёт на отдельной странице `/tasks/trash` (`tasks/trash.html`):
+ссылка «Корзина» стоит в шапке доски рядом со «Сбросом», внутри — возврат
+(`/tasks/restore/{task_id}`) и окончательное удаление
+(`/tasks/purge/{task_id}`). Раньше корзина была секцией на самой доске;
+отдельная страница разгрузила шапку и убрала дублирование разметки карточек.
+
+Столбцы доски прокручиваются независимо. `.board` ограничен высотой рабочей
+области, у `.board__column` — `max-height: 100%` и `overflow: hidden`;
+заголовок `.board__head` выведен из прокручиваемой части, а прокручивается
+только `.board__cards` (`overflow-y: auto`, `overscroll-behavior: contain`).
+Поэтому шапка столбца остаётся на месте, а прокрутка колесом внутри колонки
+не уводит всю страницу.
 
 Доска работает и без JS: «Новая карточка» ведёт на `/tasks/create`,
 карточки открываются на правку. `app/static/js/tasks.js` добавляет
@@ -614,8 +628,9 @@ python scripts/create_admin.py --name "Иванов Иван Иванович" -
 - **Нет автотестов**: проверки выполняются одноразовыми скриптами.
 - **Alembic не используется**: `alembic.ini` есть, миграций нет; схема
   создаётся через `create_all`.
-- **Диагностические файлы в git**: `app/static/_probe.html` и `uvicorn.err`
-  попали в репозиторий и не относятся к порталу.
+- **Диагностические файлы выведены из git**: `app/static/_probe.html` и
+  `uvicorn.err` не относятся к порталу и убраны из индекса (`936e469`);
+  `*.err` теперь в `.gitignore`, файлы остаются на диске.
 - **Две копии стилей**: корневой `styles.css` и
   `app/static/css/styles.css`; нужно следить за расхождениями.
 - **Устаревшие части README**: структура и некоторые примечания отстают от

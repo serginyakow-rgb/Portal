@@ -18,6 +18,9 @@ __pycache__/
 # Секреты внешних сервисов (OAuth-клиенты Google и т. п.)
 client_secret_*.json
 
+# Локальная диагностика вёрстки (layout probe)
+app/static/_probe.html
+
 # Редакторы / ОС
 .vscode/
 .idea/

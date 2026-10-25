@@ -37,6 +37,7 @@ from app.modules.tasks.schemas import (
 from app.modules.tasks.service import (
     archive_task,
     count_menu_badge,
+    count_tasks_by_assignee,
     count_trash,
     create_task,
     get_task,
@@ -130,6 +131,9 @@ async def _render_board(
     if assignee_id is not None and all(employee.id != assignee_id for employee in users):
         assignee_id = None
     tasks = await list_board(db, assignee_id=assignee_id, query=query)
+    # Сколько задач закреплено за каждым сотрудником — для окна по шестерёнке.
+    # Окно есть только у роли «Нотариус» (admin), поэтому и запрос нужен лишь ей.
+    assignee_counts = await count_tasks_by_assignee(db) if user.role == "admin" else {}
     return render(
         request,
         "tasks/index.html",
@@ -143,6 +147,7 @@ async def _render_board(
         users=users,
         assignee_id=assignee_id,
         query=query,
+        assignee_counts=assignee_counts,
         # Фильтры в адресе окна правки: после сохранения доска откроется с ними
         board_filters=_board_filters(assignee_id, query),
         card_types=CARD_TYPE_LABELS,

@@ -855,6 +855,31 @@
    восстановлено из снимка. Версии статики не менялись. Документация:
    `PROJECT_MAP.md` (§5.6 — таблица роутов и абзац о правиле), `activeContext.md`.
 
+44. Раздел «Задачи» — окно «Задачи по сотрудникам» у нотариуса (25.10.2026):
+   просьба пользователя — для роли «Нотариус» добавить справа от «Корзины»
+   кнопку с шестерёнкой, по нажатию показывать сотрудников и число
+   закреплённых за каждым задач. `app/modules/tasks/service.py` —
+   `count_tasks_by_assignee`: `select(Task.assignee_id, count(Task.id))`
+   с `deleted_at IS NULL` и `assignee_id IS NOT NULL`, `group_by` — словарь
+   `{id: число}`. `app/modules/tasks/routes.py` — `_render_board` считает
+   `assignee_counts` только для `user.role == "admin"` и передаёт в шаблон.
+   `app/templates/tasks/index.html` — кнопка `.btn.btn--ghost.btn--icon`
+   с `icon_settings(16)` и `data-modal-open="assignees-modal"` (под условием
+   `user.role == 'admin'`, `type="button"` — чтобы не отправлять форму
+   фильтра) и `<dialog id="assignees-modal" class="modal modal--assignees">`
+   со списком `users` (метка `marker_color`, имя, «(это вы)», число
+   `assignee_counts.get(employee.id, 0)`). `app/static/css/styles.css` —
+   `.btn--icon` (высота как у соседних кнопок), `.modal--assignees` (420px),
+   `.assignees*`; `base.html` — `styles.css?v=9`. Отдельного JS нет: окно
+   открывает общий обработчик `[data-modal-open]` в `tasks.js`. Проверки:
+   `py_compile` двух модулей и `node --check tasks.js` — чисто; живой сервер
+   перезапущен (без `--reload` держал старый код); `%TEMP%\check_assignees_modal.py`
+   — доска нотариуса 200, шестерёнка между «Корзиной» и концом формы, окно
+   в разметке, все 4 сотрудника и числа как в БД (2/1/3/1), у сотрудника
+   кнопки и окна нет, `?v=9`; скриншоты headless Chrome `%TEMP%\gear_plain.png`
+   и `%TEMP%\gear_modal.png` — кнопка на месте, окно открыто. Документация:
+   `PROJECT_MAP.md` (§5.2, §5.6, §6), `activeContext.md`.
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

@@ -276,6 +276,23 @@ async def count_trash(db: AsyncSession) -> int:
     return (await db.execute(stmt)).scalar_one()
 
 
+async def count_tasks_by_assignee(db: AsyncSession) -> dict[int, int]:
+    """Сколько карточек закреплено за каждым сотрудником: {id: число}.
+
+    Считаются все столбцы доски, но не корзина: закреплённой карточка
+    остаётся, пока у неё есть исполнитель и она не удалена. Сотрудники
+    без карточек в словарь не попадают — окно «Задачи по сотрудникам»
+    показывает им ноль (assignee_counts.get в шаблоне).
+    """
+    stmt = (
+        select(Task.assignee_id, func.count(Task.id))
+        .where(Task.deleted_at.is_(None), Task.assignee_id.is_not(None))
+        .group_by(Task.assignee_id)
+    )
+    rows = (await db.execute(stmt)).all()
+    return {assignee_id: count for assignee_id, count in rows}
+
+
 @dataclass(frozen=True)
 class TasksMenuBadge:
     """Два числа метки «Задачи» в левом меню портала."""

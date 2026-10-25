@@ -533,6 +533,9 @@ button { font-family: inherit; }
 .btn--danger { color: var(--warning); border-color: var(--warning); }
 .btn--danger:hover { background: var(--warning); border-color: var(--warning); color: #FFFFFF; }
 .btn svg { width: 16px; height: 16px; }
+/* Кнопка-иконка без подписи (шестерёнка в шапке «Задач»): отступы по бокам
+   уже, а высота — как у соседних кнопок строки */
+.btn--icon { padding: 10px 11px; min-height: 41px; justify-content: center; }
 
 /* ==========================================================================
    Калькулятор (раздел «Калькулятор»)
@@ -1202,6 +1205,30 @@ button { font-family: inherit; }
   padding: 18px;
 }
 .modal--confirm > .calc__row { margin-top: 14px; }
+
+/* Окно «Задачи по сотрудникам» (шестерёнка в шапке доски у нотариуса):
+   узкая модалка со списком сотрудников и числом закреплённых карточек.
+   Метка — тот же inline-SVG сотрудника, что в списке пользователей */
+.modal--assignees { width: min(420px, calc(100% - 32px)); }
+.assignees { display: grid; margin: 0; padding: 0; list-style: none; }
+.assignees__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--divider);
+  font-size: 14px;
+}
+.assignees__item:last-child { border-bottom: 0; }
+.assignees__marker { flex: none; }
+.assignees__name { flex: 1; min-width: 0; }
+.assignees__count {
+  min-width: 24px;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+}
 
 /* На узком экране столбцы фиксированной ширины: доска прокручивается
    по горизонтали, а карточки не сжимаются до нечитаемого вида */

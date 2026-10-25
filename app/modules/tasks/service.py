@@ -39,41 +39,61 @@ WORKWEEK_DAYS = 5
 # По ним считается второе число метки «Задачи» в левом меню (count_menu_badge)
 MENU_BADGE_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress")
 
-# Прогресс карточки для полосы в карточке доски, проценты. Без исполнителя
-# работа не начата — 0; назначен и чек-листа нет — половина; чек-лист даёт
-# 10% «за карточку» и 80% на все пункты; «Проверка» и «Готово» — работа закрыта.
+# Прогресс карточки в процентах (0–100) для полосы под строкой «Исполнитель | Срок».
+# Без исполнителя — 0; с исполнителем и без чек-листа: «На очереди» — 10,
+# «В работе» — 50, «Проверка»/«Готово» — 100. Карточка с чек-листом в «На очереди»
+# тоже 10, в «В работе» начинается с 10, в закрытых столбцах — с 20, а 80% делятся
+# поровну между пунктами чек-листа: в «Готово» со всеми пунктами получается 100.
 PROGRESS_NONE = 0
-PROGRESS_ASSIGNED = 50
-PROGRESS_CHECKLIST_BASE = 10
-PROGRESS_CHECKLIST_SPAN = 80
+PROGRESS_QUEUE = 10
+PROGRESS_IN_PROGRESS = 50
 PROGRESS_CLOSED = 100
-# Столбцы, где прогресс считается законченным независимо от чек-листа
+# Карточка с чек-листом: база «В работе» — 10, «Проверка»/«Готово» — 20,
+# остальные 80% приносят отмеченные пункты
+PROGRESS_CHECKLIST_IN_PROGRESS = 10
+PROGRESS_CHECKLIST_CLOSED = 20
+PROGRESS_CHECKLIST_SHARE = 80
+# Столбцы, где работа считается закрытой: «Проверка» и «Готово»
 PROGRESS_CLOSED_STATUSES: tuple[str, ...] = ("review", "done")
+
+
+def _checklist_share(items: dict[str, bool]) -> int:
+    """Доля отмеченных пунктов: 80/число пунктов чек-листа за каждый отмеченный."""
+    checked = sum(1 for flag in items.values() if flag)
+    return round(PROGRESS_CHECKLIST_SHARE * checked / len(items))
 
 
 def task_progress(
     status: str,
     assignee_id: int | None,
-    checklist: dict[str, bool] | None,
+    checklist: dict[str, bool] | None = None,
 ) -> int:
-    """Прогресс карточки в процентах — для полосы под строкой «Исполнитель | Срок».
+    """Прогресс карточки для полосы в карточке доски: проценты 0–100.
 
-    Порядок проверок важен: карточка без исполнителя остаётся пустой (только
-    серая дорожка), даже если её уже перетащили в «Проверку» или «Готово».
-    Дальше закрытые столбцы дают 100, карточка с исполнителем и без чек-листа —
-    50, а чек-лист — 10% за взятую в работу карточку плюс 80% пропорционально
-    отмеченным пунктам (все отмечены — 90, закрывает работу только столбец).
-    Цифры на доске не показываются: шаблон выводит их шириной заливки полосы.
+    Карточка без исполнителя — 0, даже если пункты отмечены: работу никто
+    не взял. С исполнителем в «На очереди» — 10, чек-лист не учитывается
+    (работа ещё не начата). Без чек-листа «В работе» — 50, «Проверка» и
+    «Готово» — 100: столбец сам говорит, где карточка. С чек-листом «В работе»
+    даёт 10 и прибавляет 80/число пунктов за каждый отмеченный, «Проверка»
+    и «Готово» — 20 и те же 80%: видно, все ли пункты закрыты (100 — все).
+
+    Чек-лист карточки хранит все пункты её типа (schemas.keep_type_checklist),
+    поэтому число чекбоксов — это len(checklist); у типов без чек-листа
+    (inheritance, other) словарь пустой, и работает правило без чекбоксов.
     """
     if assignee_id is None:
         return PROGRESS_NONE
-    if status in PROGRESS_CLOSED_STATUSES:
-        return PROGRESS_CLOSED
     items = dict(checklist or {})
+    if status == DEFAULT_STATUS:
+        # «На очереди»: работа ещё не начата, отметки прогресс не двигают
+        return PROGRESS_QUEUE
+    if status in PROGRESS_CLOSED_STATUSES:
+        if not items:
+            return PROGRESS_CLOSED
+        return PROGRESS_CHECKLIST_CLOSED + _checklist_share(items)
     if not items:
-        return PROGRESS_ASSIGNED
-    checked = sum(1 for value in items.values() if value)
-    return PROGRESS_CHECKLIST_BASE + round(PROGRESS_CHECKLIST_SPAN * checked / len(items))
+        return PROGRESS_IN_PROGRESS
+    return PROGRESS_CHECKLIST_IN_PROGRESS + _checklist_share(items)
 
 
 def working_days_left(due_date: date | None, today: date | None = None) -> int | None:
@@ -109,10 +129,8 @@ def _to_list_item(task: Task) -> TaskListItem:
 
     Описание и чек-лист попадают в элемент списка для окна правки: на доске
     они не выводятся, но шаблон отдаёт их в data-task на карточке.
-
-    `progress` считается здесь, в сервисе (task_progress), а не в шаблоне:
-    правило зависит и от столбца, и от исполнителя, и от чек-листа, а шаблон
-    должен только подставить готовое число в ширину заливки полосы.
+    Прогресс для полосы в карточке считает task_progress: он зависит от
+    столбца, исполнителя и отмеченных пунктов чек-листа.
     """
     days_left = working_days_left(task.due_date)
     return TaskListItem(

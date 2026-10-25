@@ -135,9 +135,9 @@
            цвет — marker_color исполнителя. Ширина и цвет заданы атрибутами
            SVG (width, fill), а не style: inline-стили в шаблонах запрещены.
            Цифры не выводятся — прогресс виден только по длине заливки.
-           Значение считает service.task_progress: нет исполнителя — 0,
-           исполнитель без чек-листа — 50, чек-лист — 10% + 80% по отмеченным,
-           «Проверка» и «Готово» — 100 #}
+           Значение считает service.task_progress (0–100): столбец, исполнитель
+           и отмеченные пункты чек-листа. При переносе по доске то же значение
+           приходит в TaskMoveResult.progress и заливку обновляет js/tasks.js #}
         <svg class="card__progress" aria-hidden="true" focusable="false">
           <rect class="card__progress-track" width="100%" height="100%" rx="5"></rect>
           <rect class="card__progress-fill" width="{{ task.progress }}%" height="100%" rx="5" fill="{{ task.assignee_color or 'none' }}"></rect>

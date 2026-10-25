@@ -26,7 +26,7 @@ class Task(Base):
     assignee_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True, index=True
     )
-    # Тип карточки: gift, sale_minor, sale_other, inheritance, other, personal,
+    # Тип карточки: gift, sale_minor, sale_other, inheritance, other,
     # spouse_consent, power_of_attorney (значения, подписи и чек-листы —
     # в schemas.py: CARD_TYPE_LABELS, CARD_TYPE_CHECKLISTS)
     card_type: Mapped[str] = mapped_column(String(20), nullable=False, default="other")

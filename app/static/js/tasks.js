@@ -63,6 +63,40 @@
   // Индекс вставки по вертикали курсора: перед первой карточкой, чья середина
   // ниже курсора; если такой нет — в конец столбца. Перетаскиваемая карточка
   // в расчёт не входит, иначе позиция съезжала бы на единицу
+  // Сортирует карточки столбца по сроку по возрастанию — так же, как их
+  // отдаёт list_board: карточки без срока уходят в конец, при одинаковых
+  // сроках сохраняется прежний порядок (место, куда карточку бросили).
+  // Нужна после переноса между столбцами: сервер ставит карточку на место
+  // по сроку, и доска не должна показывать другой порядок до перезагрузки
+  function sortColumn(column) {
+    var container = column.querySelector("[data-board-cards]");
+    if (!container) {
+      return;
+    }
+    var cards = columnCards(column);
+    // Порядок до сортировки: вторичный ключ при одинаковых сроках
+    var order = cards.slice();
+    cards.sort(function (left, right) {
+      var leftDue = left.getAttribute("data-task-due") || "";
+      var rightDue = right.getAttribute("data-task-due") || "";
+      if (leftDue !== rightDue) {
+        // Срок лежит в data-task-due как ГГГГ-ММ-ДД: строки сравнимы напрямую
+        if (!leftDue) {
+          return 1;
+        }
+        if (!rightDue) {
+          return -1;
+        }
+        return leftDue < rightDue ? -1 : 1;
+      }
+      return order.indexOf(left) - order.indexOf(right);
+    });
+    // appendChild переносит существующие узлы: клонировать карточки не нужно
+    cards.forEach(function (card) {
+      container.appendChild(card);
+    });
+  }
+
   function dropIndex(column, clientY) {
     var cards = columnCards(column).filter(function (card) {
       return card !== draggedCard;
@@ -76,41 +110,53 @@
     return cards.length;
   }
 
-  // Метка исполнителя на карточке: inline-SVG .card__marker, цвет — атрибут
-  // fill (та же разметка, что в tasks/index.html; inline-стили запрещены)
-  var SVG_NS = "http://www.w3.org/2000/svg";
-
-  // Обновляет имя исполнителя в строке карточки и цветную метку по ответу
-  // сервера: если карточку без исполнителя вытащили из «На очереди», им
-  // становится авторизованный сотрудник, и без этого имя менялось бы только
-  // после перезагрузки страницы
+  // Обновляет имя исполнителя в строке карточки по ответу сервера: если
+  // карточку без исполнителя вытащили из «На очереди», им становится
+  // авторизованный сотрудник, и без этого имя менялось бы только после
+  // перезагрузки страницы
   function applyAssignee(card, data) {
     var label = card.querySelector("[data-task-assignee]");
     if (label) {
       label.textContent = data.assignee_name || "Без исполнителя";
     }
-    var marker = card.querySelector(".card__marker");
-    var rect = marker ? marker.querySelector("rect") : null;
-    if (!data.assignee_color) {
-      if (marker) {
-        marker.remove();
-      }
+  }
+
+  // Полоса прогресса в карточке: ширина заливки в процентах и её цвет.
+  // После переноса прогресс меняется — карточка ушла в «Проверку»/«Готово»
+  // или, выйдя из «На очереди», получила исполнителя, — поэтому берём готовое
+  // значение из ответа сервера: иначе полоса расходилась бы с БД до
+  // перезагрузки страницы. Атрибуты, а не style: оформление живёт в CSS
+  function applyProgress(card, data) {
+    var fill = card.querySelector(".card__progress-fill");
+    if (!fill) {
       return;
     }
-    if (!rect) {
-      marker = document.createElementNS(SVG_NS, "svg");
-      marker.setAttribute("class", "card__marker");
-      marker.setAttribute("aria-hidden", "true");
-      marker.setAttribute("focusable", "false");
-      rect = document.createElementNS(SVG_NS, "rect");
-      rect.setAttribute("width", "100%");
-      rect.setAttribute("height", "100%");
-      rect.setAttribute("rx", "1.5");
-      marker.appendChild(rect);
-      // Метка стоит первой в карточке — как в шаблоне доски
-      card.insertBefore(marker, card.firstChild);
+    var progress = typeof data.progress === "number" ? data.progress : 0;
+    fill.setAttribute("width", progress + "%");
+    fill.setAttribute("fill", data.assignee_color || "none");
+  }
+
+  // Обновляет метку «Задачи» в левом меню по ответу сервера. Перетаскивание
+  // меняет её числа — карточка сменила столбец, а при выходе из «На очереди»
+  // получила ещё и исполнителя, — а страница при этом не перезагружается.
+  // Текст и подсказка повторяют разметку base.html («X | Y» и расшифровку
+  // в title): сервер отдаёт только числа, оформление остаётся в одном месте.
+  function applyMenuBadge(data) {
+    var badge = document.querySelector("[data-menu-badge]");
+    if (
+      !badge ||
+      typeof data.menu_unassigned !== "number" ||
+      typeof data.menu_mine !== "number"
+    ) {
+      return;
     }
-    rect.setAttribute("fill", data.assignee_color);
+    var unassigned = String(data.menu_unassigned);
+    var mine = String(data.menu_mine);
+    badge.textContent = unassigned + " | " + mine;
+    badge.setAttribute(
+      "title",
+      "Не распределено: " + unassigned + " · Мои на очереди и в работе: " + mine
+    );
   }
 
   // Переносит карточку в выбранный столбец и отправляет позицию на сервер
@@ -120,6 +166,9 @@
       return;
     }
     var status = column.getAttribute("data-status") || "";
+    // Столбец, откуда карточку вытащили: при смене столбца целевой столбец
+    // пересортировывается по сроку — так же, как его отдаёт сервер
+    var previousStatus = card.getAttribute("data-task-status") || "";
     var index = dropIndex(column, clientY);
     var reference = toArray(container.querySelectorAll(".board__card")).filter(function (item) {
       return item !== card;
@@ -127,15 +176,22 @@
 
     container.insertBefore(card, reference);
     card.setAttribute("data-task-status", status);
+    if (status !== previousStatus) {
+      sortColumn(column);
+    }
     refreshBoard();
-    persistMove(card, status, index);
+    // Позиция для сервера — фактическое место карточки после сортировки
+    var placed = columnCards(column).indexOf(card);
+    persistMove(card, status, placed < 0 ? index : placed);
   }
 
   // Отправляет перенос на сервер. В ответе приходит исполнитель карточки:
   // если он был пуст и карточку вытащили из «На очереди», им становится
   // авторизованный сотрудник, и имя в строке карточки обновляется без
-  // перезагрузки. При ошибке доска перезагружается — иначе карточка осталась
-  // бы не там, где её видит сервер, и следующий перенос затёр бы чужие позиции
+  // перезагрузки. Там же — числа метки «Задачи» в левом меню (menu_unassigned,
+  // menu_mine): перенос их меняет, поэтому метку переписываем сразу.
+  // При ошибке доска перезагружается — иначе карточка осталась бы не там,
+  // где её видит сервер, и следующий перенос затёр бы чужие позиции
   function persistMove(card, status, position) {
     var taskId = card.getAttribute("data-task-id") || "";
     if (!taskId || typeof window.fetch !== "function") {
@@ -167,6 +223,8 @@
       .then(function (data) {
         if (data) {
           applyAssignee(card, data);
+          applyProgress(card, data);
+          applyMenuBadge(data);
         }
       })
       .catch(function () {

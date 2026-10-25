@@ -53,9 +53,13 @@
   (`justify-content: center` → `flex-start`) внесена и в корневой файл, и в
   рабочую копию `app/static/css/styles.css`. Нужно решение: откатить корень
   или разрешить синхронизацию копий правилом (см. `activeContext.md`).
-- **`uvicorn.err` в репозитории**: файл отслеживается git и виден публично
-  на GitHub; правило `*.log` его не покрывает, `*.err` в `.gitignore` нет.
-  Логи запусков пишем в `%TEMP%`, файл — кандидат на удаление из индекса.
+- **Логи запусков — только в `%TEMP%`**: `uvicorn.err` и
+  `app/static/_probe.html` выведены из git коммитом `936e469`, `*.err`
+  добавлен в `.gitignore`; сами файлы остаются на диске.
+- **Версии статики в разделе «Задачи» расходятся**: `base.html` —
+  `styles.css?v=6`, `tasks/index.html` — `tasks.js?v=7`, `tasks/form.html` —
+  `tasks.js?v=6`, `tasks/trash.html` — без параметра. Браузер сотрудника
+  может держать в кеше старую копию скрипта; версии стоит выровнять.
 - **Устаревшие тексты и ключи**: docstring `app/modules/calculators/routes.py`
   (строка 89) говорит о «пятнадцати суммах», хотя в «Расчет и сдача» 12 полей
   и три поля вывода; в браузерах могут оставаться ключи `localStorage`
@@ -65,8 +69,6 @@
   изменении существующей БД колонки добавляются вручную.
 - **Устаревшие примечания README** (структура проекта, раздел «Панель»,
   ручные `ALTER TABLE`) — README отстаёт от кода.
-- **`app/static/_probe.html`** — диагностический файл (измерения вёрстки),
-  отслеживается git; роутов нет, кандидат на удаление.
 - **Разделы из исходного каркаса** («Лица», «Карточки», «Канбан», «Календарь»)
   в меню и коде отсутствуют: не начинать их без отдельной задачи.
 
@@ -742,6 +744,116 @@
    проверен логикой `dragend`, сами обработчики DnD не менялись.
    Документация: `PROJECT_MAP.md` (§5.6 — абзац об окне правки и абзац
    о `js/tasks.js`, §6 — строка `tasks.js`).
+
+39. Раздел «Задачи» — тип «Личное» убран, поле «Тип задачи» (25.10.2026):
+   из `TaskCardType`, `CARD_TYPE_LABELS` и `CARD_TYPE_CHECKLISTS`
+   (`app/modules/tasks/schemas.py`) удалён `personal`; в комментарии
+   `app/modules/tasks/models.py` список значений тоже без него.
+   В `tasks/_form_fields_main.html` подпись поля — «Тип задачи» вместо
+   «Тип карточки». В базе карточек с `card_type='personal'` не было
+   (`gift` 2, `sale_minor` 4, `sale_other` 1), поэтому данные не пострадали;
+   `TaskCreate` со значением `personal` теперь даёт `ValidationError`.
+   Правки лежали в рабочем дереве и проверены вместе с задачей 40.
+
+40. Раздел «Задачи» — срок в «Готово» и порядок столбцов по сроку
+   (25.10.2026): по просьбе пользователя в столбце «Готово» срок больше
+   не выделяется. `app/static/css/styles.css` (строки 1345–1346) —
+   scoped-правила `.board__column[data-status="done"] .card__due--soon
+   { font-weight: inherit; color: inherit; }` и
+   `.board__column[data-status="done"] .card__due-alert { display: none; }`:
+   только стили, флаг `due_soon` и разметка карточки не менялись.
+   Порядок карточек: `move_task` (`app/modules/tasks/service.py`, строка 325)
+   сортирует **целевой** столбец ключом `_due_sort_key`
+   (`(due_date is None, due_date or date.min)`) и только при смене столбца;
+   это тот же порядок, что отдаёт `list_board` (сортировка в SQL:
+   `due_date IS NULL`, `due_date`, `position`, `id`). Перестановка внутри
+   столбца ручной `position` сохраняет — при равных сроках он виден.
+   `js/tasks.js`: `sortColumn` (строка 71) переставляет карточки в DOM после
+   успешного переноса по атрибуту `data-task-due` (`tasks/index.html`,
+   строка 100, ГГГГ-ММ-ДД), иначе доска показывала бы место броска
+   до перезагрузки. Версия статики: `styles.css?v=6` (`base.html`),
+   `tasks.js?v=7` (`tasks/index.html`); в `tasks/form.html` остался `?v=6`,
+   в `tasks/trash.html` параметра нет — версии стоит выровнять.
+   Комментарии к порогу `due_soon` исправлены с «≤ 1 дня» на «меньше двух
+   рабочих дней» (пн–пт). Проверки: `node --check`, `compileall`,
+   `git diff --check` — чисто; живые HTTP-проверки 28/28 на копии базы
+   (временный uvicorn `127.0.0.1:8011`, настоящий `portal.db` не трогали):
+   подсветка снята только в `done`, порядок столбца после переноса совпадает
+   с `list_board`, `data-task-due` есть в разметке, чужой id — `404`;
+   юнит-проверки ключа (без срока — в конце, равные сроки — стабильно)
+   пройдены. Временный сервер остановлен, скрипты проверок — в `%TEMP%`.
+   Документация: `PROJECT_MAP.md` (§5.6 — абзацы о порядке карточек и о
+   подсветке срока, §6 — строка `tasks.js` и абзац про `?v=`, §7 —
+   `position`), `activeContext.md`, `progress.md` (записи 39–40),
+   `techContext.md` (строка о скрипте проверок, состояние окружения на
+   25.10.2026, «Известный мусор» — файлы уже вне индекса).
+
+41. Метка «Задачи» в левом меню: «ничьи | мои в работе» (25.10.2026):
+   `app/modules/tasks/service.py` — `MENU_BADGE_STATUSES` (`queue`,
+   `in_progress`), `TasksMenuBadge` и `count_menu_badge(db, user_id)`: один
+   запрос `count(case …)`, первое число — `assignee_id IS NULL`, второе —
+   карточки сотрудника в двух столбцах, корзина исключена. `app/main.py` —
+   middleware `tasks_menu_badge` на каждый `GET` (кроме `/static`):
+   `get_optional_user` → `request.state.tasks_badge` (`None` без сессии).
+   `app/core/templating.py` — `tasks_badge` в контексте `render()`.
+   `app/templates/base.html` — `span.menu__count` с `X | Y` и расшифровкой
+   в `title`; стили брались готовые (`.menu__count` уже был в `styles.css`).
+   Проверки: `py_compile` и Jinja-компиляция `base.html` — чисто; E2E на
+   копии `portal.db` (временный uvicorn `127.0.0.1:8127`, настоящая база не
+   тронута): A `3 | 2`, B `3 | 1` на `/dashboard`, `/tasks/`, `/calculators/`,
+   на странице входа метки нет, без сессии `303`, статика 200 —
+   `ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ`; скрипт `%TEMP%\portal_badge_e2e.py`.
+   Документация: `PROJECT_MAP.md` (§2, §3, §5.1, §5.6, §8.5),
+   `systemPatterns.md`, `productContext.md`, `activeContext.md`.
+
+42. Метка «Задачи» обновляется сразу после перетаскивания карточки
+   (25.10.2026): жалоба пользователя — числа метки не менялись после переноса.
+   `app/modules/tasks/schemas.py` — в `TaskMoveResult` добавлены
+   `menu_unassigned` и `menu_mine` (по умолчанию `0`); `app/modules/tasks/routes.py`
+   — `task_move` после `move_task` пересчитывает `count_menu_badge(db, user.id)`
+   в той же сессии и отдаёт числа в ответе; `app/templates/base.html` — у метки
+   появился якорь `data-menu-badge`; `app/static/js/tasks.js` — `applyMenuBadge`
+   переписывает `X | Y` и `title` из ответа (вызов рядом с `applyAssignee`,
+   ветка ошибки прежняя — перезагрузка). Версии статики: `tasks.js?v=8`
+   в `index.html`, `form.html` и `trash.html` (в корзине версии раньше не было).
+   Проверки: `py_compile` пяти модулей, Jinja — все 30 шаблонов, импорт
+   `app.main`, `node --check` — чисто; E2E на копии `portal.db` (uvicorn
+   `127.0.0.1:8128`): ничья `queue→in_progress` → `menu_unassigned=2`,
+   `menu_mine=3`, метка `2 | 3` на следующей загрузке; A `queue→done` → `2 | 2`;
+   A `done→queue` → `2 | 3`; ничья `review→queue` → `2 | 3`; у B `2 | 1`;
+   `/tasks/trash`, `/dashboard` 200; в HTML `tasks.js?v=8` —
+   `ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ` (`%TEMP%\portal_badge_move_e2e.py`).
+   Документация: `PROJECT_MAP.md` (§5.2, §5.6, §6, §8.5), `systemPatterns.md`,
+   `activeContext.md`.
+
+43. Раздел «Задачи» — «Не выбран» в поле «Выполняет» возвращает карточку
+   в «На очереди» (25.10.2026): просьба пользователя — при сохранении правки
+   карточки без исполнителя она должна переехать в первый столбец.
+   `app/modules/tasks/service.py` — `update_task`: после записи полей, если
+   `task.assignee_id is None` и столбец не `DEFAULT_STATUS`, вызывается
+   `move_task(status=DEFAULT_STATUS, position=len(столбца))`; позицию,
+   пришедшую вместе со столбцом, не переносим — место определяет сортировка
+   по сроку (`_due_sort_key`), как при перетаскивании. Карточка без
+   исполнителя в «На очереди» при сохранении остаётся на своей позиции,
+   сохранение с исполнителем столбец не меняет. `app/modules/tasks/routes.py`
+   — `task_update` запоминает прежний столбец и добавляет `&moved=queue`
+   в адрес возврата; `_render_board` и `index_page` получили параметр `moved`
+   (входит в проверку «вход в раздел» вместе с `saved`/`deleted`/`gcal`);
+   в импорт из `schemas` добавлен `DEFAULT_STATUS`.
+   `app/templates/tasks/index.html` — ветка `{% elif moved == "queue" %}`:
+   «Изменения сохранены. Исполнитель не выбран — карточка возвращена
+   в «На очереди».» `app/modules/tasks/schemas.py` — docstring `TaskUpdate`
+   описывает правило. Проверки: `py_compile` трёх модулей — чисто; E2E на
+   живой базе (`127.0.0.1:8000`, uvicorn перезапущен после правки — без
+   `--reload` он держал старый код) скриптом
+   `%TEMP%\portal_unassign_e2e.py` на временных карточках 12–15:
+   `review` + исполнитель → «Не выбран» → `queue`, `303` с `&moved=queue`,
+   подсказка на доске, карточка в столбце `queue`; `done` + тот же
+   исполнитель → `done` без `moved`; `queue` без исполнителя → позиция
+   не изменилась; `in_progress` → «Не выбран» → `queue`; `done` → «Не выбран»
+   → `queue`. Временные карточки удалены, состояние 7 настоящих
+   восстановлено из снимка. Версии статики не менялись. Документация:
+   `PROJECT_MAP.md` (§5.6 — таблица роутов и абзац о правиле), `activeContext.md`.
 
 ## Как продолжать работу
 

@@ -29,13 +29,19 @@ def render(
     status_code: int = 200,
     **context: Any,
 ) -> HTMLResponse:
-    """Рендерит шаблон, добавляя общий для всех страниц контекст."""
+    """Рендерит шаблон, добавляя общий для всех страниц контекст.
+
+    ``tasks_badge`` кладёт middleware в ``request.state`` (app/main.py): это
+    два числа метки «Задачи» в левом меню, None — если пользователь не вошёл
+    или middleware не выполнялась.
+    """
     page_context: dict[str, Any] = {
         "user": user,
         "initials": initials(user.full_name) if user is not None else "?",
         "role_label": ROLE_LABELS.get(user.role, user.role) if user is not None else "",
         "role_labels": ROLE_LABELS,
         "active_menu": active_menu,
+        "tasks_badge": getattr(request.state, "tasks_badge", None),
     }
     page_context.update(context)
     return request.app.state.templates.TemplateResponse(

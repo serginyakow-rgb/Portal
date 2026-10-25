@@ -4,9 +4,10 @@
 связи assignee (она загружается вместе с карточкой), а список сотрудников
 для фильтра роуты получают из auth.service.
 """
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.tasks.models import Task
@@ -27,12 +28,93 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+# Сколько рабочих дней (пн–пт) может остаться до срока, чтобы он считался
+# срочным: меньше этого числа — срок выделяется красным в карточке доски
+DUE_SOON_WORKDAYS = 2
+
+# Рабочая неделя: понедельник (0) — пятница (4); суббота и воскресенье — выходные
+WORKWEEK_DAYS = 5
+
+# Столбцы, которые считаются текущей работой сотрудника: «На очереди» и «В работе».
+# По ним считается второе число метки «Задачи» в левом меню (count_menu_badge)
+MENU_BADGE_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress")
+
+# Прогресс карточки для полосы в карточке доски, проценты. Без исполнителя
+# работа не начата — 0; назначен и чек-листа нет — половина; чек-лист даёт
+# 10% «за карточку» и 80% на все пункты; «Проверка» и «Готово» — работа закрыта.
+PROGRESS_NONE = 0
+PROGRESS_ASSIGNED = 50
+PROGRESS_CHECKLIST_BASE = 10
+PROGRESS_CHECKLIST_SPAN = 80
+PROGRESS_CLOSED = 100
+# Столбцы, где прогресс считается законченным независимо от чек-листа
+PROGRESS_CLOSED_STATUSES: tuple[str, ...] = ("review", "done")
+
+
+def task_progress(
+    status: str,
+    assignee_id: int | None,
+    checklist: dict[str, bool] | None,
+) -> int:
+    """Прогресс карточки в процентах — для полосы под строкой «Исполнитель | Срок».
+
+    Порядок проверок важен: карточка без исполнителя остаётся пустой (только
+    серая дорожка), даже если её уже перетащили в «Проверку» или «Готово».
+    Дальше закрытые столбцы дают 100, карточка с исполнителем и без чек-листа —
+    50, а чек-лист — 10% за взятую в работу карточку плюс 80% пропорционально
+    отмеченным пунктам (все отмечены — 90, закрывает работу только столбец).
+    Цифры на доске не показываются: шаблон выводит их шириной заливки полосы.
+    """
+    if assignee_id is None:
+        return PROGRESS_NONE
+    if status in PROGRESS_CLOSED_STATUSES:
+        return PROGRESS_CLOSED
+    items = dict(checklist or {})
+    if not items:
+        return PROGRESS_ASSIGNED
+    checked = sum(1 for value in items.values() if value)
+    return PROGRESS_CHECKLIST_BASE + round(PROGRESS_CHECKLIST_SPAN * checked / len(items))
+
+
+def working_days_left(due_date: date | None, today: date | None = None) -> int | None:
+    """Сколько рабочих дней осталось до срока, не считая сегодняшний день.
+
+    Рабочие дни — понедельник–пятница, суббота и воскресенье пропускаются.
+    Срок сегодня или в прошлом даёт 0 (карточка считается срочной), пустой
+    срок — None. Считаем по календарным неделям: в каждой полной неделе ровно
+    пять рабочих дней, остаток (до шести дней) перебираем по одному — иначе
+    срок в следующем году прокручивал бы сотни шагов на каждую карточку.
+    """
+    if due_date is None:
+        return None
+    start = today or date.today()
+    if due_date <= start:
+        return 0
+    days = (due_date - start).days
+    full_weeks, rest = divmod(days, 7)
+    remaining = full_weeks * WORKWEEK_DAYS
+    for offset in range(1, rest + 1):
+        if (start + timedelta(days=offset)).weekday() < WORKWEEK_DAYS:
+            remaining += 1
+    return remaining
+
+
+def _due_sort_key(task: Task) -> tuple[bool, date]:
+    """Ключ сортировки карточки по сроку: без срока — в конце столбца."""
+    return (task.due_date is None, task.due_date or date.min)
+
+
 def _to_list_item(task: Task) -> TaskListItem:
     """Карточка доски: подпись типа и имя исполнителя берутся из справочника и связи.
 
     Описание и чек-лист попадают в элемент списка для окна правки: на доске
-    они не выводятся, но шаблон отдаёт их в data-task на кнопке карточки.
+    они не выводятся, но шаблон отдаёт их в data-task на карточке.
+
+    `progress` считается здесь, в сервисе (task_progress), а не в шаблоне:
+    правило зависит и от столбца, и от исполнителя, и от чек-листа, а шаблон
+    должен только подставить готовое число в ширину заливки полосы.
     """
+    days_left = working_days_left(task.due_date)
     return TaskListItem(
         id=task.id,
         title=task.title,
@@ -46,6 +128,8 @@ def _to_list_item(task: Task) -> TaskListItem:
         assignee_id=task.assignee_id,
         assignee_name=task.assignee.full_name if task.assignee else None,
         assignee_color=task.assignee.marker_color if task.assignee else None,
+        progress=task_progress(task.status, task.assignee_id, task.checklist),
+        due_soon=days_left is not None and days_left < DUE_SOON_WORKDAYS,
         checklist=dict(task.checklist or {}),
         deleted_at=task.deleted_at,
     )
@@ -174,6 +258,37 @@ async def count_trash(db: AsyncSession) -> int:
     return (await db.execute(stmt)).scalar_one()
 
 
+@dataclass(frozen=True)
+class TasksMenuBadge:
+    """Два числа метки «Задачи» в левом меню портала."""
+
+    unassigned: int  # карточки без исполнителя
+    mine: int  # карточки сотрудника в «На очереди» и «В работе»
+
+
+async def count_menu_badge(db: AsyncSession, user_id: int) -> TasksMenuBadge:
+    """Числа для метки «Задачи»: ничьи карточки и карточки сотрудника в работе.
+
+    Первое число — неудалённые карточки без исполнителя (любой столбец доски).
+    Второе — карточки этого сотрудника в столбцах «На очереди» и «В работе»
+    (MENU_BADGE_STATUSES). Карточки без исполнителя в него не входят, хотя доска
+    показывает их в списке любого сотрудника: метка отражает личную загрузку.
+
+    Оба числа считаются одним запросом: count(case …) на SQLite подходит
+    везде, в отличие от FILTER, доступного только с 3.30.
+    """
+    mine_condition = and_(
+        Task.assignee_id == user_id,
+        Task.status.in_(MENU_BADGE_STATUSES),
+    )
+    unassigned = func.count(case((Task.assignee_id.is_(None), Task.id)))
+    mine = func.count(case((mine_condition, Task.id)))
+    row = (
+        await db.execute(select(unassigned, mine).where(Task.deleted_at.is_(None)))
+    ).one()
+    return TasksMenuBadge(unassigned=row[0], mine=row[1])
+
+
 async def get_task(db: AsyncSession, task_id: int) -> Task | None:
     """Карточка по идентификатору — вместе с исполнителем и автором.
 
@@ -220,10 +335,13 @@ async def create_task(
 
 
 async def update_task(db: AsyncSession, task: Task, data: TaskUpdate) -> Task:
-    """Меняет поля карточки; столбец и позицию — только если они переданы явно.
+    """Меняет поля карточки; столбец — только если сняли исполнителя.
 
-    Форма правки столбец не присылает: карточка остаётся на месте. Перемещение
-    по доске идёт через move_task.
+    Форма правки столбец не присылает: карточка остаётся на месте. Исключение —
+    «Не выбран» в поле «Выполняет»: карточка без исполнителя не стоит в работе,
+    поэтому после сохранения возвращается в «На очереди» так же, как её
+    возвращает перетаскивание (move_task ставит её на место по сроку).
+    Перемещение по доске идёт через move_task.
     """
     task.title = data.title
     task.contact = data.contact or None
@@ -232,12 +350,17 @@ async def update_task(db: AsyncSession, task: Task, data: TaskUpdate) -> Task:
     task.assignee_id = data.assignee_id
     task.card_type = data.card_type
     task.checklist = dict(data.checklist)
-    if data.status is not None or data.position is not None:
-        status = data.status or task.status
-        if data.position is None:
+    status = data.status or task.status
+    position = data.position
+    if task.assignee_id is None and status != DEFAULT_STATUS:
+        # Исполнителя нет — работа не начата: карточку возвращаем в «На очереди».
+        # Место в столбце определит сортировка по сроку (move_task), поэтому
+        # позицию, пришедшую вместе со столбцом, не переносим
+        status = DEFAULT_STATUS
+        position = None
+    if status != task.status or position is not None:
+        if position is None:
             position = len(await _column_tasks(db, status, exclude_id=task.id))
-        else:
-            position = data.position
         return await move_task(db, task, status=status, position=position)
     await db.commit()
     updated = await get_task(db, task.id)
@@ -257,6 +380,11 @@ async def move_task(
     Позиции в исходном и целевом столбцах перенумеровываются подряд (0..n-1),
     чтобы в порядке не появлялись дырки после каждого перетаскивания.
 
+    Если карточку перенесли в другой столбец, целевой столбец сортируется
+    по сроку по возрастанию (_due_sort_key): доска показывает карточки именно
+    в этом порядке, поэтому место, куда её бросили, значения не имеет. При
+    перестановке внутри столбца ручной порядок сохраняется.
+
     Если карточку вытащили из «На очереди» (DEFAULT_STATUS) в другой столбец
     и исполнитель ещё не указан, им становится сотрудник, который её
     перетащил (actor_id): работу начал он. Уже выбранного исполнителя перенос
@@ -264,8 +392,9 @@ async def move_task(
     столбцами.
     """
     old_status = task.status
+    column_changed = old_status != status
     target = await _column_tasks(db, status, exclude_id=task.id)
-    source = await _column_tasks(db, old_status, exclude_id=task.id) if old_status != status else []
+    source = await _column_tasks(db, old_status, exclude_id=task.id) if column_changed else []
 
     task.status = status
     moved_out_of_queue = old_status == DEFAULT_STATUS and status != DEFAULT_STATUS
@@ -273,6 +402,12 @@ async def move_task(
     if reassigned:
         task.assignee_id = actor_id
     target.insert(max(0, min(position, len(target))), task)
+    if column_changed:
+        # Столбец, куда перенесли карточку, выстраивается по сроку по возрастанию
+        # (тот же порядок, что отдаёт list_board): без срока — в конце, при
+        # одинаковых сроках остаётся место, куда карточку бросили (сортировка
+        # стабильная). Перестановка внутри столбца ручной порядок не меняет.
+        target.sort(key=_due_sort_key)
     for order, item in enumerate(target):
         item.position = order
     for order, item in enumerate(source):

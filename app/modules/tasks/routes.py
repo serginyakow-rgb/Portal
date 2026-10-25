@@ -6,6 +6,7 @@
 import logging
 from datetime import date
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -23,6 +24,7 @@ from app.modules.tasks.schemas import (
     CARD_TYPE_CHECKLISTS,
     CARD_TYPE_LABELS,
     DEFAULT_CARD_TYPE,
+    DEFAULT_STATUS,
     STATUS_CLASSES,
     STATUS_LABELS,
     STATUS_ORDER,
@@ -34,6 +36,7 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.service import (
     archive_task,
+    count_menu_badge,
     count_trash,
     create_task,
     get_task,
@@ -44,6 +47,7 @@ from app.modules.tasks.service import (
     purge_task,
     read_task,
     restore_task,
+    task_progress,
     update_task,
 )
 
@@ -83,6 +87,17 @@ def _filter_assignee(value: str | None) -> int | None:
         return None
 
 
+def _board_filters(assignee_id: int | None, query: str) -> str:
+    """Строка фильтров доски для адреса: ``assignee=…&q=…``.
+
+    Форма правки несёт её в своём адресе, поэтому после сохранения доска
+    открывается с прежними «Исполнителем» и «Поиском». Пустой ``assignee=``
+    — «Все сотрудники»; параметр остаётся в адресе всегда, иначе index_page
+    подставит текущего сотрудника вместо выбранного фильтра.
+    """
+    return urlencode({"assignee": "" if assignee_id is None else assignee_id, "q": query})
+
+
 def _checked_items(names: list[str] | None) -> dict[str, bool]:
     """Отмеченные пункты чек-листа: чужие для типа пункты отбросит схема."""
     return {name: True for name in names or []}
@@ -98,6 +113,7 @@ async def _render_board(
     saved: bool = False,
     deleted: bool = False,
     gcal: str = "",
+    moved: str = "",
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
@@ -105,6 +121,9 @@ async def _render_board(
 
     Выбранный сотрудник показывает свои карточки и карточки без исполнителя
     (см. list_board); пустой фильтр — вся доска.
+
+    `moved` — куда карточка переехала при сохранении правки (`queue`, когда
+    сняли исполнителя): об этом доска сообщает над столбцами.
     """
     users = await list_users(db)
     # Неизвестный фильтр (сотрудника удалили) сбрасываем: доска показывается целиком
@@ -124,6 +143,8 @@ async def _render_board(
         users=users,
         assignee_id=assignee_id,
         query=query,
+        # Фильтры в адресе окна правки: после сохранения доска откроется с ними
+        board_filters=_board_filters(assignee_id, query),
         card_types=CARD_TYPE_LABELS,
         checklists=CARD_TYPE_CHECKLISTS,
         default_card_type=DEFAULT_CARD_TYPE,
@@ -135,6 +156,7 @@ async def _render_board(
         saved=saved,
         deleted=deleted,
         gcal=gcal,
+        moved=moved,
         error=error,
         status_code=status_code,
     )
@@ -182,6 +204,7 @@ def _render_task_form(
     goog_cal_time: str = google_calendar.DEFAULT_EVENT_TIME,
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
+    board_filters: str = "",
 ) -> HTMLResponse:
     """Рендерит форму карточки: создание и правку."""
     items = checklist if checklist is not None else {}
@@ -207,6 +230,7 @@ def _render_task_form(
         google_calendar_connected=google_calendar.is_connected(),
         goog_cal=goog_cal,
         goog_cal_time=goog_cal_time,
+        board_filters=board_filters,
         error=error,
         status_code=status_code,
     )
@@ -222,6 +246,7 @@ async def index_page(
     saved: bool = False,
     deleted: bool = False,
     gcal: str = "",
+    moved: str = "",
 ) -> HTMLResponse:
     """Доска задач: четыре столбца и фильтры (исполнитель и поиск).
 
@@ -232,13 +257,14 @@ async def index_page(
     в фильтре «Исполнитель» подставляется текущий сотрудник: доска сразу
     показывает его карточки и карточки без исполнителя. Туда же ведёт кнопка
     «Сброс» — она очищает поиск и возвращает фильтр к текущему сотруднику.
-    Переходы после действий (`?saved=`, `?deleted=`, `?gcal=`) и поиск (`?q=`)
-    фильтр не подставляют — на экране остаётся то, что записано в адресе.
+    Переходы после действий (`?saved=`, `?deleted=`, `?gcal=`, `?moved=`)
+    и поиск (`?q=`) фильтр не подставляют — на экране остаётся то, что
+    записано в адресе.
     """
     # «Вход в раздел» — адрес без параметров: подставляем авторизованного
     # сотрудника. Пустой `?assignee=` (пункт «Все сотрудники») и любой
     # другой параметр означают осознанный выбор — адрес не переписываем.
-    if assignee is None and not any((q, saved, deleted, gcal)):
+    if assignee is None and not any((q, saved, deleted, gcal, moved)):
         assignee_id = user.id
     else:
         assignee_id = _filter_assignee(assignee)
@@ -251,6 +277,7 @@ async def index_page(
         saved=saved,
         deleted=deleted,
         gcal=gcal,
+        moved=moved,
     )
 
 
@@ -297,8 +324,9 @@ async def task_create(
 
     Если отмечен чекбокс «Добавить в Google календарь», после сохранения
     карточки создаётся событие: заголовок — из «Заголовка карточки», дата —
-    из «Срока», время — из поля времени. Сбой календаря карточку не отменяет:
-    она уже записана, а на доске появляется предупреждение.
+    из «Срока», время — из поля времени, описание — из «Контакта»
+    и «Описания». Сбой календаря карточку не отменяет: она уже записана,
+    а на доске появляется предупреждение.
     """
     users = await list_users(db)
     checked = _checked_items(checklist)
@@ -369,6 +397,8 @@ async def task_create(
             data.title,
             data.due_date,
             goog_cal_time,
+            data.contact,
+            data.description,
         )
     except google_calendar.GoogleCalendarError as exc:
         logger.warning("Событие карточки «%s» не создано: %s", data.title, exc)
@@ -388,8 +418,14 @@ async def task_edit_form(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: CurrentUser,
     task_id: int,
+    assignee: str | None = None,
+    q: str = "",
 ) -> HTMLResponse:
-    """Форма правки карточки: заполняется текущими значениями."""
+    """Форма правки карточки: заполняется текущими значениями.
+
+    Фильтры доски (`?assignee=&q=`) уходят в адрес формы, поэтому после
+    сохранения доска откроется с прежними «Исполнителем» и «Поиском».
+    """
     task = await read_task(db, task_id)
     if task is None:
         return await _render_board(
@@ -411,6 +447,7 @@ async def task_edit_form(
         assignee_id=task.assignee_id,
         card_type=task.card_type,
         checklist=task.checklist,
+        board_filters=_board_filters(_filter_assignee(assignee), q),
     )
 
 
@@ -427,8 +464,16 @@ async def task_update(
     assignee_id: Annotated[str, Form()] = "",
     card_type: Annotated[str, Form()] = "",
     checklist: Annotated[list[str] | None, Form()] = None,
+    assignee: str | None = None,
+    q: str = "",
 ) -> HTMLResponse | RedirectResponse:
-    """Сохраняет поля карточки; столбец и позицию меняет только доска."""
+    """Сохраняет поля карточки; столбец меняет доска или снятый исполнитель.
+
+    «Не выбран» в поле «Выполняет» возвращает карточку в «На очереди»
+    (service.update_task), поэтому в адрес возврата добавляется `moved=queue`:
+    доска сообщает об этом над столбцами, иначе карточка молча исчезла бы из
+    своего столбца.
+    """
     task = await get_task(db, task_id)
     if task is None:
         return await _render_board(
@@ -440,6 +485,9 @@ async def task_update(
         )
 
     users = await list_users(db)
+    # Фильтры доски из адреса (их передают окно правки и страница карточки):
+    # после сохранения возвращаемся на доску с теми же фильтрами
+    board_filters = _board_filters(_filter_assignee(assignee), q)
     checked = _checked_items(checklist)
     try:
         data = TaskUpdate(
@@ -464,6 +512,7 @@ async def task_update(
             assignee_id=_to_int(assignee_id) or None,
             card_type=card_type or DEFAULT_CARD_TYPE,
             checklist=checked,
+            board_filters=board_filters,
             error=_validation_message(exc),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -481,12 +530,22 @@ async def task_update(
             assignee_id=data.assignee_id,
             card_type=data.card_type,
             checklist=checked,
+            board_filters=board_filters,
             error="Выбранный исполнитель не найден",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    await update_task(db, task, data)
-    return RedirectResponse("/tasks/?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+    before_status = task.status
+    updated = await update_task(db, task, data)
+    # Карточку вернул в «На очереди» снятый исполнитель: доска скажет об этом
+    moved = (
+        f"&moved={DEFAULT_STATUS}"
+        if updated.status == DEFAULT_STATUS and before_status != DEFAULT_STATUS
+        else ""
+    )
+    return RedirectResponse(
+        f"/tasks/?{board_filters}&saved=1{moved}", status_code=status.HTTP_303_SEE_OTHER
+    )
 
 
 @router.post("/delete/{task_id}", response_class=HTMLResponse, response_model=None)
@@ -576,6 +635,15 @@ async def task_move(
     из «На очереди», исполнителем становится этот сотрудник (move_task), поэтому
     в ответе возвращается исполнитель — доска обновляет его имя в карточке
     без перезагрузки.
+
+    Здесь же пересчитывается метка «Задачи» в левом меню (count_menu_badge):
+    перенос меняет её числа, а страница не перезагружается — без этих полей
+    метка оставалась бы старой до следующей загрузки. Считаем после коммита
+    переноса, в той же сессии: карточка уже в новом столбце.
+
+    `progress` считается по карточке после переноса (task_progress): в «Проверке»
+    и «Готово» он равен 100, а при выходе из «На очереди» появляется исполнитель —
+    по этим данным js/tasks.js перерисовывает заливку полосы прогресса.
     """
     task = await get_task(db, task_id)
     if task is None or task.deleted_at is not None:
@@ -590,8 +658,12 @@ async def task_move(
         position=payload.position,
         actor_id=user.id,
     )
+    badge = await count_menu_badge(db, user.id)
     return TaskMoveResult(
         assignee_id=moved.assignee_id,
         assignee_name=moved.assignee.full_name if moved.assignee else None,
         assignee_color=moved.assignee.marker_color if moved.assignee else None,
+        progress=task_progress(moved.status, moved.assignee_id, moved.checklist),
+        menu_unassigned=badge.unassigned,
+        menu_mine=badge.mine,
     )

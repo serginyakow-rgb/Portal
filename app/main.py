@@ -1,5 +1,5 @@
-"""Точка входа: сборка FastAPI, статика, шаблоны и обработчики ошибок."""
-from collections.abc import AsyncIterator
+"""Точка входа: сборка FastAPI, статика, шаблоны, метка меню и обработчики ошибок."""
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -8,18 +8,19 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.core.database import engine
+from app.core.database import async_session_maker, engine
 from app.core.templating import MENU_PANEL, render
 from app.db.base import Base
 
 # Модели импортируются до create_all, иначе SQLAlchemy не знает о таблицах
 from app.modules.auth import models as auth_models  # noqa: F401
-from app.modules.auth.dependencies import CurrentUser
+from app.modules.auth.dependencies import CurrentUser, get_optional_user
 from app.modules.auth.routes import router as auth_router
 from app.modules.calculators.routes import router as calculators_router
 from app.modules.settings.routes import router as settings_router
 from app.modules.tasks import models as tasks_models  # noqa: F401 (таблица tasks)
 from app.modules.tasks.routes import router as tasks_router
+from app.modules.tasks.service import count_menu_badge
 from app.modules.templates_db.routes import router as templates_db_router
 
 
@@ -51,6 +52,29 @@ app = FastAPI(title="Портал нотариальной конторы", life
 
 app.mount("/static", NoCacheStaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
+
+
+@app.middleware("http")
+async def tasks_menu_badge(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Считает метку «Задачи» в левом меню один раз на страницу.
+
+    Меню общее для всех страниц, поэтому числа нужны не только в разделе
+    «Задачи». Значение кладётся в request.state, откуда его забирает render()
+    (core/templating.py); по умолчанию — None, метки нет: так страница входа
+    и статика остаются без лишних запросов к БД. Сессия закрывается до
+    call_next, чтобы не держать два соединения к SQLite одновременно.
+    """
+    request.state.tasks_badge = None
+    if request.method == "GET" and not request.url.path.startswith("/static"):
+        async with async_session_maker() as db:
+            user = await get_optional_user(request, db)
+            if user is not None:
+                request.state.tasks_badge = await count_menu_badge(db, user.id)
+    return await call_next(request)
+
 
 app.include_router(auth_router)
 app.include_router(settings_router)

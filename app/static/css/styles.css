@@ -412,7 +412,8 @@ button { font-family: inherit; }
 .panel--tasks > .status { margin-top: 12px; }
 
 /* Карточка дела: молочный фон, тонкая (1px) тёмно-синяя рамка, лёгкая тень.
-   position: relative — якорь для метки исполнителя (.card__marker) */
+   position: relative — карточка служит якорем для абсолютно позиционированных
+   элементов внутри неё (например, полосы-метки на левой грани) */
 .card {
   position: relative;
   display: flex;
@@ -436,36 +437,23 @@ button { font-family: inherit; }
 .card__foot .btn { padding: 5px 9px; }
 .card__foot .btn svg { width: 13px; height: 13px; }
 
-/* Метка исполнителя на левой грани карточки «Задач»: короткая полоса (3px) со
-   скруглением справа — тот же приём, что у активного пункта меню
-   (.menu__item::before). У карточек задач её геометрию переопределяет
-   .card--task ниже. Цвет — marker_color исполнителя; он приходит атрибутом
-   fill, потому что inline-стили в шаблонах запрещены (так же выводится метка
-   сотрудника в «Пользователях»). Карточка без исполнителя полосы не получает.
-   Полоса декоративная: клики и перетаскивание идут сквозь неё
-   (pointer-events: none) */
-.card__marker {
-  position: absolute;
-  left: 0;
-  top: 8px;
-  width: 3px;
-  height: calc(100% - 16px);
+/* Полоса прогресса в карточке задачи: дорожка 10px со скруглением 5px
+   (половина высоты — торцы круглые) и серым фоном из палитры; overflow: hidden
+   обрезает заливку по скруглению дорожки. Цвет заливки в CSS не задан: он
+   приходит атрибутом fill (marker_color исполнителя) — так же, как раньше
+   выводилась метка на левой грани карточки.
+   pointer-events: none — полоса не мешает открыть карточку щелчком
+   и перетащить её. Правило scoped по .card--task: карточки других разделов
+   его не получают */
+.card--task .card__progress {
+  display: block;
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
   pointer-events: none;
 }
-
-/* Исключение для раздела «Задачи»: у карточек дел (доска и корзина) полоса на
-   левой грани — 10px от верхней до нижней границы. Левые углы скруглены как у
-   самой карточки: внутренний радиус = --radius (6px) минус её рамка 1px;
-   overflow: hidden обрезает <rect> по этому радиусу, поэтому полоса не выходит
-   за скруглённый контур. Правило привязано к .card--task — карточки других
-   разделов его не получают */
-.card--task .card__marker {
-  top: 0;
-  width: 10px;
-  height: 100%;
-  border-radius: calc(var(--radius) - 1px) 0 0 calc(var(--radius) - 1px);
-  overflow: hidden;
-}
+.card--task .card__progress-track { fill: var(--divider); }
 
 .card__title { font-size: 14.5px; font-weight: 600; color: var(--text); }
 .card__meta { font-size: 12.5px; color: var(--muted); }
@@ -1334,5 +1322,13 @@ button { font-family: inherit; }
 /* Красный треугольник «срок истекает / просрочен»: цвет из палитры внимания */
 .card__due-alert { flex: none; color: var(--warning); }
 
-/* Срок ≤ 1 дня: поле выделяется жирным красным текстом (палитра внимания) */
+/* Срок: меньше двух рабочих дней (или срок уже прошёл) — поле выделяется
+   жирным красным текстом (палитра внимания) */
 .card__due--soon { font-weight: 700; color: var(--warning); }
+
+/* В столбце «Готово» срок показывается как обычный текст: работа закрыта,
+   предупреждение о близком сроке там не нужно. Класс и значок остаются
+   в разметке карточки, поэтому при переносе обратно в работу выделение
+   возвращается само — без перерисовки карточки скриптом */
+.board__column[data-status="done"] .card__due--soon { font-weight: inherit; color: inherit; }
+.board__column[data-status="done"] .card__due-alert { display: none; }

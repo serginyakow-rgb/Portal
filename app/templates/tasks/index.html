@@ -17,7 +17,9 @@
    При входе в раздел (адрес /tasks/ без параметров) сервер сам подставляет
    авторизованного сотрудника (index_page в routes.py). Кнопка «Сброс» ведёт
    на тот же /tasks/: поиск очищается, в фильтре снова текущий сотрудник;
-   явный пустой ?assignee= — «Все сотрудники». #}
+   явный пустой ?assignee= — «Все сотрудники».
+   Те же фильтры окно правки несёт в адресе /tasks/update/{id} (board_filters),
+   поэтому после сохранения карточки «Исполнитель» и «Поиск» не сбрасываются. #}
 <section class="panel panel--tasks">
   <div class="panel__head">
     <h1 class="panel__title">Задачи</h1>
@@ -52,6 +54,10 @@
     {{ status_warn("Карточка добавлена, но событие не создано: у карточки не заполнен срок.") }}
     {% elif gcal == "failed" %}
     {{ status_warn("Карточка добавлена, но создать событие в Google Календаре не удалось: проверьте связь в настройках.") }}
+    {% elif moved == "queue" %}
+    {# Исполнителя сняли в окне правки: карточку вернул в «На очереди» сервер
+       (service.update_task), сообщение объясняет, почему она сменила столбец #}
+    {{ status_done("Изменения сохранены. Исполнитель не выбран — карточка возвращена в «На очереди».") }}
     {% else %}
     {{ status_done("Изменения сохранены.") }}
     {% endif %}
@@ -64,7 +70,9 @@
    столбец и позицию (data-task-*), по ним js/tasks.js отправляет /tasks/move/{id};
    приёмник перетаскивания — блок .board__cards (data-board-cards).
    В каждом столбце карточки идут по возрастанию срока (list_board): без срока —
-   в конце, при одинаковых сроках — в порядке ручной позиции. #}
+   в конце, при одинаковых сроках — в порядке ручной позиции. При переносе
+   карточки в другой столбец он пересортировывается по сроку (move_task и
+   js/tasks.js: срок карточки лежит в data-task-due как ГГГГ-ММ-ДД). #}
 <div class="board" data-board>
   {% for status_key in status_order %}
   <section class="board__column {{ status_classes[status_key] }}" data-board-column data-status="{{ status_key }}">
@@ -95,28 +103,23 @@
       <article class="card card--task board__card" draggable="true"
                data-task-id="{{ task.id }}" data-task-status="{{ task.status }}"
                data-task-position="{{ task.position }}"
+               data-task-due="{{ task.due_date.isoformat() if task.due_date else '' }}"
                data-task-edit
-               data-task-form="/tasks/update/{{ task.id }}"
+               data-task-form="/tasks/update/{{ task.id }}?{{ board_filters }}"
                data-task-delete-url="/tasks/delete/{{ task.id }}"
                data-task="{{ edit_payload|tojson|forceescape }}"
                role="button" tabindex="0" aria-haspopup="dialog">
-        {# Метка исполнителя: полоса 10px во всю высоту левой грани, углы
-           скруглены как у карточки (.card--task .card__marker). Цвет —
-           атрибут fill (inline-стили в шаблонах запрещены) #}
-        {% if task.assignee_color %}
-        <svg class="card__marker" aria-hidden="true" focusable="false">
-          <rect width="100%" height="100%" rx="1.5" fill="{{ task.assignee_color }}"></rect>
-        </svg>
-        {% endif %}
-
         <div class="card__title">{{ task.title }}</div>
         {# Строка «Исполнитель | Срок». Контакт на доске не выводится — он остаётся
            полем карточки (форма правки и модальное окно). Срок показывается
            всегда; «не задан» — когда дата в карточке пустая. Если до срока
-           сутки или меньше (включая просроченные карточки), срок выделяется
-           жирным красным текстом и получает значок. #}
+           осталось меньше двух рабочих дней (пн–пт, выходные не считаются)
+           или срок уже прошёл, срок выделяется жирным красным текстом
+           и получает значок; due_soon считает service.working_days_left.
+           В столбце «Готово» выделение снимается стилями (см. styles.css):
+           работа закрыта, предупреждение о близком сроке там не нужно. #}
         {% set days_left = (task.due_date - today).days if task.due_date else none %}
-        {% set due_soon = days_left is not none and days_left <= 1 %}
+        {% set due_soon = task.due_soon %}
         <p class="card__meta card__row">
           {# data-task-assignee: сюда js/tasks.js пишет исполнителя из ответа
              /tasks/move/{id} — если поле было пустым, после переноса
@@ -127,6 +130,19 @@
           <span class="card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</span>
         </p>
 
+        {# Полоса прогресса: серая дорожка 10px со скруглением 5px, заливка —
+           слева направо, её ширина равна прогрессу карточки в процентах,
+           цвет — marker_color исполнителя. Ширина и цвет заданы атрибутами
+           SVG (width, fill), а не style: inline-стили в шаблонах запрещены.
+           Цифры не выводятся — прогресс виден только по длине заливки.
+           Значение считает service.task_progress: нет исполнителя — 0,
+           исполнитель без чек-листа — 50, чек-лист — 10% + 80% по отмеченным,
+           «Проверка» и «Готово» — 100 #}
+        <svg class="card__progress" aria-hidden="true" focusable="false">
+          <rect class="card__progress-track" width="100%" height="100%" rx="5"></rect>
+          <rect class="card__progress-fill" width="{{ task.progress }}%" height="100%" rx="5" fill="{{ task.assignee_color or 'none' }}"></rect>
+        </svg>
+
         {# Кнопок «Редактировать» и «Удалить» на карточке больше нет: правка
            открывается щелчком по карточке, удаление — из окна правки.
            Без скрипта щелчок окно не открывает, поэтому здесь же лежит обычная
@@ -134,7 +150,7 @@
         <noscript>
           <div class="card__foot">
             <div class="calc__row">
-              <a class="btn btn--ghost" href="/tasks/update/{{ task.id }}"
+              <a class="btn btn--ghost" href="/tasks/update/{{ task.id }}?{{ board_filters }}"
                  title="Редактировать карточку">{{ icon_edit() }}</a>
             </div>
           </div>
@@ -220,5 +236,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=6"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=10"></script>
 {% endblock %}

@@ -22,7 +22,19 @@ app/modules/<модуль>/
 ## Рендеринг страниц
 
 - Все страницы идут через `render()` из `app/core/templating.py`: он
-  докладывает `user`, `initials`, `role_label`, `role_labels`, `active_menu`.
+  докладывает `user`, `initials`, `role_label`, `role_labels`, `active_menu`,
+  `tasks_badge`.
+- `tasks_badge` (метка «Задачи» в меню) кладёт HTTP-middleware
+  `tasks_menu_badge` в `app/main.py` в `request.state.tasks_badge`; по
+  умолчанию `None` (страница входа, статика). Считает её
+  `tasks.service.count_menu_badge` — одним запросом, шаблон чисел не считает.
+  Метка живёт в `span.menu__count[data-menu-badge]`. Действия, которые меняют
+  числа без перезагрузки страницы, обязаны вернуть их сами: `task_move`
+  (`POST /tasks/move/{id}`) кладёт `menu_unassigned`/`menu_mine`
+  в `TaskMoveResult`, а `js/tasks.js` (`applyMenuBadge`) переписывает текст
+  и `title` метки. Новый такой эндпоинт — те же два поля и тот же вызов.
+  Оформление строки (`X | Y` и расшифровка) задаёт шаблон, сервер отдаёт
+  только числа; строку в JS держим дословно как в `base.html`.
 - Шаблон наследует `app/templates/base.html`; рабочая область — `.workspace`,
   содержимое в `{% block content %}`, скрипты — в `{% block scripts %}`.
 - `active_menu` — строковый ключ пункта меню (`panel`, `templates_db`,

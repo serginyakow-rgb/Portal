@@ -22,13 +22,6 @@
   <div class="cards">
     {% for task in trash %}
     <article class="card card--task">
-      {# Метка исполнителя: та же полоса, что и на доске #}
-      {% if task.assignee_color %}
-      <svg class="card__marker" aria-hidden="true" focusable="false">
-        <rect width="100%" height="100%" rx="1.5" fill="{{ task.assignee_color }}"></rect>
-      </svg>
-      {% endif %}
-
       <div class="card__title">{{ task.title }}</div>
       {# Та же строка, что на доске: исполнитель, черта, дата удаления.
          Контакт в карточке корзины тоже не показывается #}
@@ -62,5 +55,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=10"></script>
 {% endblock %}

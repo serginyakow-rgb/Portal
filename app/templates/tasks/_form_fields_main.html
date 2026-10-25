@@ -17,7 +17,7 @@
 {% set form_card_type = card_type or default_card_type %}
 
 <div class="field">
-  <label for="{{ field_id }}card_type">Тип карточки</label>
+  <label for="{{ field_id }}card_type">Тип задачи</label>
   <select id="{{ field_id }}card_type" name="card_type" required data-task-type>
     {% for value, label in card_types.items() %}
     <option value="{{ value }}"{% if value == form_card_type %} selected{% endif %}>{{ label }}</option>
@@ -47,9 +47,10 @@
      (Настройки → Связь с Google Календарём), стоит справа от «Срока»
      и относится к созданию карточки: при правке событие не создаётся,
      поэтому окно правки передаёт gcal_enabled=false. Отметка и время уходят
-     в задачу создания (/tasks/create): оттуда заголовок карточки, срок
-     и время попадают в новое событие календаря, а в данные самой карточки
-     не записываются. Подписей у полей нет намеренно: надпись над ними общая. #}
+     в задачу создания (/tasks/create): оттуда заголовок карточки, срок,
+     время, «Контакт» и «Описание» попадают в новое событие календаря,
+     а в данные самой карточки отметка и время не записываются. Подписей
+     у полей нет намеренно: надпись над ними общая. #}
   {% if google_calendar_connected and (gcal_enabled if gcal_enabled is defined else not task) %}
   <div class="gcal">
     <span class="gcal__title">Добавить в Google календарь</span>

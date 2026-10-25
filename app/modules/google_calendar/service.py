@@ -490,14 +490,17 @@ def create_task_event(
     title: str,
     due_date: date,
     start_time: str = DEFAULT_EVENT_TIME,
+    contact: str = "",
+    description: str = "",
 ) -> dict[str, str]:
     """Создаёт в календаре событие из карточки задачи.
 
     Заголовок события — «Заголовок карточки», дата — «Срок», время — поле
     времени рядом с чекбоксом «Добавить в Google календарь» (пустое поле
-    означает 09:00). Длительность — EVENT_DURATION_MINUTES: столько обычно
-    длится приём. Дату в прошлом Google принимает, поэтому карточку можно
-    завести задним числом — событие просто попадёт в прошедший день.
+    означает 09:00), описание — поля карточки «Контакт» и «Описание».
+    Длительность — EVENT_DURATION_MINUTES: столько обычно длится приём.
+    Дату в прошлом Google принимает, поэтому карточку можно завести задним
+    числом — событие просто попадёт в прошедший день.
 
     Возвращает данные события для сообщения нотариусу. Если календарь
     не подключён или Google отказал, бросает GoogleCalendarError: карточка
@@ -510,6 +513,7 @@ def create_task_event(
     ).astimezone()
     body = {
         "summary": summary,
+        "description": _task_event_description(contact, description),
         "start": _event_time(start),
         "end": _event_time(start + timedelta(minutes=EVENT_DURATION_MINUTES)),
     }
@@ -533,6 +537,22 @@ def create_task_event(
     }
     logger.info("В Google Календаре создано событие карточки: %s", event["html_link"])
     return event
+
+
+def _task_event_description(contact: str, description: str) -> str:
+    """Описание события из полей карточки «Контакт» и «Описание».
+
+    Пустые поля в текст не попадают: у карточки без контакта в событии
+    не будет пустой строки «Контакт:».
+    """
+    parts: list[str] = []
+    contact = (contact or "").strip()
+    description = (description or "").strip()
+    if contact:
+        parts.append(f"Контакт: {contact}")
+    if description:
+        parts.append(description)
+    return "\n\n".join(parts)
 
 
 def _parse_event_time(value: str) -> tuple[int, int]:

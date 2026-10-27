@@ -445,7 +445,8 @@ button { font-family: inherit; }
    pointer-events: none — полоса не мешает открыть карточку щелчком
    и перетащить её. Правило scoped по .card--task: карточки других разделов
    его не получают */
-.card--task .card__progress {
+.card--task .card__progress,
+.assignees .card__progress {
   display: block;
   width: 100%;
   height: 10px;
@@ -453,7 +454,8 @@ button { font-family: inherit; }
   overflow: hidden;
   pointer-events: none;
 }
-.card--task .card__progress-track { fill: var(--divider); }
+.card--task .card__progress-track,
+.assignees .card__progress-track { fill: var(--divider); }
 
 .card__title { font-size: 14.5px; font-weight: 600; color: var(--text); }
 .card__meta { font-size: 12.5px; color: var(--muted); }
@@ -1206,9 +1208,10 @@ button { font-family: inherit; }
 }
 .modal--confirm > .calc__row { margin-top: 14px; }
 
-/* Окно «Задачи по сотрудникам» (шестерёнка в шапке доски у нотариуса):
-   узкая модалка со списком сотрудников и числом закреплённых карточек.
-   Метка — тот же inline-SVG сотрудника, что в списке пользователей */
+/* Окно «Задачи по сотрудникам» (глаз в шапке доски у нотариуса):
+   узкая модалка со списком сотрудников, числом закреплённых карточек
+   и полосой прогресса под именем — та же полоса, что в карточке доски,
+   шкала от нуля до максимума задач у одного сотрудника */
 .modal--assignees { width: min(420px, calc(100% - 32px)); }
 .assignees { display: grid; margin: 0; padding: 0; list-style: none; }
 .assignees__item {
@@ -1221,7 +1224,13 @@ button { font-family: inherit; }
 }
 .assignees__item:last-child { border-bottom: 0; }
 .assignees__marker { flex: none; }
-.assignees__name { flex: 1; min-width: 0; }
+.assignees__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .assignees__count {
   min-width: 24px;
   color: var(--navy);

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon_plus, icon_edit,
                                status_done, status_warn, icon_due_alert,
-                               icon_settings %}
+                               icon_eye %}
 
 {% block title %}Задачи · Нотариальная контора{% endblock %}
 
@@ -42,13 +42,13 @@
               title="Обновить доску по выбранным фильтрам">Обновить</button>
       <a class="btn btn--ghost" href="/tasks/" title="Очистить поиск и показать карточки текущего сотрудника">Сброс</a>
       <a class="btn btn--ghost" href="/tasks/trash" title="Удалённые карточки">Корзина</a>
-      {# Шестерёнка — только нотариусу (роль admin): окно со списком сотрудников
+      {# Глаз — только нотариусу (роль admin): окно со списком сотрудников
          и числом закреплённых за каждым задач. type="button" обязателен: внутри
          GET-формы фильтра обычная кнопка отправила бы её вместо открытия окна #}
       {% if user and user.role == 'admin' %}
       <button class="btn btn--ghost btn--icon" type="button"
               data-modal-open="assignees-modal" aria-label="Задачи по сотрудникам"
-              title="Задачи по сотрудникам">{{ icon_settings(16) }}</button>
+              title="Задачи по сотрудникам">{{ icon_eye(16) }}</button>
       {% endif %}
     </form>
   </div>
@@ -243,9 +243,11 @@
   </form>
 </dialog>
 
-{# Окно «Задачи по сотрудникам» — открывает шестерёнка в шапке доски.
-   Есть только у роли «Нотариус» (admin): список всех сотрудников и число
-   закреплённых за каждым неудалённых карточек по всем столбцам доски.
+{# Окно «Задачи по сотрудникам» — открывает глаз в шапке доски.
+   Есть только у роли «Нотариус» (admin): список всех сотрудников, число
+   закреплённых за каждым неудалённых карточек по всем столбцам доски
+   и полоса прогресса под именем: её шкала — от 0 до максимума задач
+   у одного сотрудника.
    Цифры считает count_tasks_by_assignee при загрузке страницы; окно
    открывает js/tasks.js по data-modal-open, закрывают «Закрыть»,
    Escape и клик по подложке. #}
@@ -257,16 +259,27 @@
     </div>
     <p class="panel__hint">Закреплённые карточки — все столбцы доски, без корзины.</p>
     <ul class="assignees">
+      {# Шкала полосы — максимум задач у одного сотрудника: у него заливка
+         100%, у остальных — доля от него. Пустой словарь (карточек ни у кого
+         нет) даёт нулевую шкалу, деления на ноль нет #}
+      {% set max_count = (assignee_counts.values() | max) if assignee_counts else 0 %}
       {% for employee in users %}
+      {% set count = assignee_counts.get(employee.id, 0) %}
+      {% set progress = (count * 100 // max_count) if max_count else 0 %}
       <li class="assignees__item">
-        {# Метка сотрудника: тот же inline-SVG, что в списке пользователей,
-           цвет берётся из marker_color (fill — атрибут, не inline-стиль) #}
-        <svg class="assignees__marker" width="14" height="14" viewBox="0 0 18 18"
-             role="img" aria-label="Цвет метки {{ employee.marker_color }}">
-          <rect width="18" height="18" rx="4" fill="{{ employee.marker_color }}"></rect>
-        </svg>
-        <span class="assignees__name">{{ employee.full_name }}{% if employee.id == user.id %} (это вы){% endif %}</span>
-        <span class="assignees__count">{{ assignee_counts.get(employee.id, 0) }}</span>
+        {# Метки сотрудника больше нет: его цвет остался только в заливке
+           полосы прогресса (fill — атрибут, не inline-стиль) #}
+        <div class="assignees__name">
+          {{ employee.full_name }}{% if employee.id == user.id %} (это вы){% endif %}
+          {# Полоса прогресса — та же разметка, что в карточке доски:
+             серая дорожка и заливка цветом исполнителя; длина заливки —
+             доля от самого загруженного сотрудника #}
+          <svg class="card__progress" aria-hidden="true" focusable="false">
+            <rect class="card__progress-track" width="100%" height="100%" rx="5"></rect>
+            <rect class="card__progress-fill" width="{{ progress }}%" height="100%" rx="5" fill="{{ employee.marker_color or 'none' }}"></rect>
+          </svg>
+        </div>
+        <span class="assignees__count">{{ count }}</span>
       </li>
       {% endfor %}
     </ul>

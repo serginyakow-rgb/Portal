@@ -158,6 +158,41 @@
     );
   }
 
+  // Обновляет окно «Задачи по сотрудникам» по ответу сервера. Окно рендерит
+  // шаблон при загрузке страницы, поэтому после перетаскивания в «Готово»
+  // (этот столбец в загрузку не входит) цифра и полоса оставались бы
+  // прежними до перезагрузки. Числа приходят готовыми в assignee_counts,
+  // шкалу полосы строим так же, как шаблон: доля от самого загруженного
+  // сотрудника, целые проценты. Окна нет у роли «Сотрудник» — тогда panel
+  // не найдена и обновлять нечего.
+  function applyAssignees(data) {
+    var panel = document.querySelector("[data-assignees]");
+    var counts = data.assignee_counts;
+    if (!panel || !counts || typeof counts !== "object") {
+      return;
+    }
+    var items = toArray(panel.querySelectorAll("[data-assignee-id]"));
+    var max = 0;
+    items.forEach(function (item) {
+      var count = counts[item.getAttribute("data-assignee-id")];
+      if (typeof count === "number" && count > max) {
+        max = count;
+      }
+    });
+    items.forEach(function (item) {
+      var count = counts[item.getAttribute("data-assignee-id")];
+      count = typeof count === "number" ? count : 0;
+      var label = item.querySelector("[data-assignee-count]");
+      if (label) {
+        label.textContent = String(count);
+      }
+      var fill = item.querySelector("[data-assignee-fill]");
+      if (fill) {
+        fill.setAttribute("width", (max ? Math.floor((count * 100) / max) : 0) + "%");
+      }
+    });
+  }
+
   // Переносит карточку в выбранный столбец и отправляет позицию на сервер
   function moveCard(card, column, clientY) {
     var container = column.querySelector("[data-board-cards]");
@@ -189,6 +224,8 @@
   // авторизованный сотрудник, и имя в строке карточки обновляется без
   // перезагрузки. Там же — числа метки «Задачи» в левом меню (menu_unassigned,
   // menu_mine): перенос их меняет, поэтому метку переписываем сразу.
+  // Числа окна «Задачи по сотрудникам» (assignee_counts) обновляются по той же
+  // причине: «Готово» в загрузку не входит, и перенос туда меняет цифру.
   // При ошибке доска перезагружается — иначе карточка осталась бы не там,
   // где её видит сервер, и следующий перенос затёр бы чужие позиции
   function persistMove(card, status, position) {
@@ -224,6 +261,7 @@
           applyAssignee(card, data);
           applyProgress(card, data);
           applyMenuBadge(data);
+          applyAssignees(data);
         }
       })
       .catch(function () {

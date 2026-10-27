@@ -649,6 +649,10 @@ async def task_move(
     Прогресс полосы в карточке тоже возвращается: он зависит от нового столбца,
     исполнителя и отмеченных пунктов чек-листа (task_progress), а доска
     перерисовывает заливку по ответу, не дожидаясь перезагрузки.
+
+    Окну «Задачи по сотрудникам» (роль «Нотариус») нужны свежие числа загрузки:
+    перенос в «Готово» убирает карточку из подсчёта, и без assignee_counts
+    окно показывало бы прежнюю цифру до перезагрузки страницы.
     """
     task = await get_task(db, task_id)
     if task is None or task.deleted_at is not None:
@@ -664,6 +668,8 @@ async def task_move(
         actor_id=user.id,
     )
     badge = await count_menu_badge(db, user.id)
+    # Окна по сотрудникам у остальных ролей нет — им лишний запрос не нужен
+    assignee_counts = await count_tasks_by_assignee(db) if user.role == "admin" else {}
     return TaskMoveResult(
         assignee_id=moved.assignee_id,
         assignee_name=moved.assignee.full_name if moved.assignee else None,
@@ -671,4 +677,5 @@ async def task_move(
         progress=task_progress(moved.status, moved.assignee_id, moved.checklist),
         menu_unassigned=badge.unassigned,
         menu_mine=badge.mine,
+        assignee_counts=assignee_counts,
     )

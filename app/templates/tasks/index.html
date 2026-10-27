@@ -245,20 +245,23 @@
 
 {# Окно «Задачи по сотрудникам» — открывает глаз в шапке доски.
    Есть только у роли «Нотариус» (admin): список всех сотрудников, число
-   закреплённых за каждым неудалённых карточек по всем столбцам доски
-   и полоса прогресса под именем: её шкала — от 0 до максимума задач
-   у одного сотрудника.
-   Цифры считает count_tasks_by_assignee при загрузке страницы; окно
-   открывает js/tasks.js по data-modal-open, закрывают «Закрыть»,
-   Escape и клик по подложке. #}
+   неудалённых карточек у каждого в столбцах «На очереди», «В работе»
+   и «Проверка» и полоса прогресса под именем: её шкала — от 0 до максимума
+   таких карточек у одного сотрудника. «Готово» в подсчёт не входит.
+   Цифры считает count_tasks_by_assignee при загрузке страницы, а после
+   перетаскивания карточки их обновляет js/tasks.js по TaskMoveResult
+   (assignee_counts): данные-атрибуты data-assignee-id, data-assignee-count
+   и data-assignee-fill — якоря для этой перерисовки. Окно открывает
+   js/tasks.js по data-modal-open, закрывают «Закрыть», Escape и клик
+   по подложке. #}
 {% if user and user.role == 'admin' %}
 <dialog class="modal modal--assignees" id="assignees-modal" aria-labelledby="assignees-title">
   <div class="calc__form">
     <div class="panel__head">
       <h2 class="panel__title" id="assignees-title">Задачи по сотрудникам</h2>
     </div>
-    <p class="panel__hint">Закреплённые карточки — все столбцы доски, без корзины.</p>
-    <ul class="assignees">
+    <p class="panel__hint">Карточки в работе — «На очереди», «В работе», «Проверка».</p>
+    <ul class="assignees" data-assignees>
       {# Шкала полосы — максимум задач у одного сотрудника: у него заливка
          100%, у остальных — доля от него. Пустой словарь (карточек ни у кого
          нет) даёт нулевую шкалу, деления на ноль нет #}
@@ -266,7 +269,7 @@
       {% for employee in users %}
       {% set count = assignee_counts.get(employee.id, 0) %}
       {% set progress = (count * 100 // max_count) if max_count else 0 %}
-      <li class="assignees__item">
+      <li class="assignees__item" data-assignee-id="{{ employee.id }}">
         {# Метки сотрудника больше нет: его цвет остался только в заливке
            полосы прогресса (fill — атрибут, не inline-стиль) #}
         <div class="assignees__name">
@@ -276,10 +279,10 @@
              доля от самого загруженного сотрудника #}
           <svg class="card__progress" aria-hidden="true" focusable="false">
             <rect class="card__progress-track" width="100%" height="100%" rx="5"></rect>
-            <rect class="card__progress-fill" width="{{ progress }}%" height="100%" rx="5" fill="{{ employee.marker_color or 'none' }}"></rect>
+            <rect class="card__progress-fill" data-assignee-fill width="{{ progress }}%" height="100%" rx="5" fill="{{ employee.marker_color or 'none' }}"></rect>
           </svg>
         </div>
-        <span class="assignees__count">{{ count }}</span>
+        <span class="assignees__count" data-assignee-count>{{ count }}</span>
       </li>
       {% endfor %}
     </ul>
@@ -292,5 +295,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=10"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=11"></script>
 {% endblock %}

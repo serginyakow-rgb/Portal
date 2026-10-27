@@ -39,6 +39,11 @@ WORKWEEK_DAYS = 5
 # По ним считается второе число метки «Задачи» в левом меню (count_menu_badge)
 MENU_BADGE_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress")
 
+# Столбцы, по которым окно «Задачи по сотрудникам» считает загрузку сотрудника
+# и строит полосу прогресса: «На очереди», «В работе», «Проверка». «Готово»
+# не входит: работа закрыта и в текущей загрузке не участвует
+ASSIGNEE_COUNT_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress", "review")
+
 # Прогресс карточки в процентах (0–100) для полосы под строкой «Исполнитель | Срок».
 # Без исполнителя — 0; с исполнителем и без чек-листа: «На очереди» — 10,
 # «В работе» — 50, «Проверка»/«Готово» — 100. Карточка с чек-листом в «На очереди»
@@ -279,14 +284,19 @@ async def count_trash(db: AsyncSession) -> int:
 async def count_tasks_by_assignee(db: AsyncSession) -> dict[int, int]:
     """Сколько карточек закреплено за каждым сотрудником: {id: число}.
 
-    Считаются все столбцы доски, но не корзина: закреплённой карточка
-    остаётся, пока у неё есть исполнитель и она не удалена. Сотрудники
-    без карточек в словарь не попадают — окно «Задачи по сотрудникам»
-    показывает им ноль (assignee_counts.get в шаблоне).
+    Считаются столбцы «На очереди», «В работе» и «Проверка»
+    (ASSIGNEE_COUNT_STATUSES), но не «Готово» и не корзина: по этому числу
+    окно «Задачи по сотрудникам» строит и цифру, и полосу прогресса.
+    Сотрудники без карточек в словарь не попадают — окно показывает им ноль
+    (assignee_counts.get в шаблоне).
     """
     stmt = (
         select(Task.assignee_id, func.count(Task.id))
-        .where(Task.deleted_at.is_(None), Task.assignee_id.is_not(None))
+        .where(
+            Task.deleted_at.is_(None),
+            Task.assignee_id.is_not(None),
+            Task.status.in_(ASSIGNEE_COUNT_STATUSES),
+        )
         .group_by(Task.assignee_id)
     )
     rows = (await db.execute(stmt)).all()

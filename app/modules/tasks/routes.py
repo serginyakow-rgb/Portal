@@ -677,5 +677,6 @@ async def task_move(
         progress=task_progress(moved.status, moved.assignee_id, moved.checklist),
         menu_unassigned=badge.unassigned,
         menu_mine=badge.mine,
+        menu_due_soon=badge.due_soon,
         assignee_counts=assignee_counts,
     )

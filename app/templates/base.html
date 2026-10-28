@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Нотариальная контора{% endblock %}</title>
   {# ?v= — версия статики: новый URL заставляет браузер забрать свежие стили #}
-  <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=10">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=11">
 </head>
 <body>
-  {% from "_macros.html" import icon_settings, icon_tasks %}
+  {% from "_macros.html" import icon_settings, icon_tasks, icon_due_alert %}
   <div class="app">
     <header class="header">
       <div class="header__brand">
@@ -69,16 +69,26 @@
           </form>
 
           <form method="get" action="/tasks/">
-            <button class="menu__item {% if active_menu == 'tasks' %}is-active{% endif %}" type="submit">
+            <button class="menu__item menu__item--tasks {% if active_menu == 'tasks' %}is-active{% endif %}" type="submit">
               {{ icon_tasks(20) }}
               <span class="menu__text">Задачи</span>
+              {% if tasks_badge %}
               {# Метка: «без исполнителя | мои в „На очереди“ и „В работе“».
                  Числа считает middleware в app/main.py (count_menu_badge),
                  класс .menu__count уже описан в styles.css.
+                 Стоит сразу после слова «Задачи»: в этом пункте текст не
+                 растягивается (.menu__item--tasks .menu__text), иначе метку
+                 уводило бы к правому краю.
                  data-menu-badge — якорь для js/tasks.js: после перетаскивания
                  карточки числа переписываются из ответа /tasks/move/{id} #}
-              {% if tasks_badge %}
               <span class="menu__count" data-menu-badge title="Не распределено: {{ tasks_badge.unassigned }} · Мои на очереди и в работе: {{ tasks_badge.mine }}">{{ tasks_badge.unassigned }} | {{ tasks_badge.mine }}</span>
+              {# Значок предупреждения о сроке — тот же красный треугольник, что
+                 в карточке доски (icon_due_alert, цвет .card__due-alert).
+                 Идёт последним и прижат к правому краю пункта (margin-left: auto
+                 в .menu__item--tasks [data-menu-badge-due]).
+                 hidden — якорь для js/tasks.js: после переноса карточки значок
+                 показывается или прячется по menu_due_soon #}
+              <span data-menu-badge-due{% if not tasks_badge.due_soon %} hidden{% endif %}>{{ icon_due_alert(20, "У ваших задач истекает или прошёл срок") }}</span>
               {% endif %}
             </button>
           </form>

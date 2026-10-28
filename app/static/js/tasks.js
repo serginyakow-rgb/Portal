@@ -110,15 +110,32 @@
     return cards.length;
   }
 
-  // Обновляет имя исполнителя в строке карточки по ответу сервера: если
-  // карточку без исполнителя вытащили из «На очереди», им становится
-  // авторизованный сотрудник, и без этого имя менялось бы только после
-  // перезагрузки страницы
+  // Обновляет исполнителя карточки по ответу сервера: если карточку без
+  // исполнителя вытащили из «На очереди», им становится авторизованный
+  // сотрудник, и без этого имя менялось бы только после перезагрузки страницы.
+  // Вместе с именем правится снимок полей в data-task: окно «Редактирование
+  // карточки» заполняет поле «Выполняет» именно из него, и со старым снимком
+  // оно показывало «Не выбран», хотя исполнитель в БД уже есть
   function applyAssignee(card, data) {
     var label = card.querySelector("[data-task-assignee]");
     if (label) {
       label.textContent = data.assignee_name || "Без исполнителя";
     }
+    // assignee_id приходит в ответе всегда: null — исполнителя у карточки нет
+    if (data.assignee_id === undefined) {
+      return;
+    }
+    var payload;
+    try {
+      payload = JSON.parse(card.getAttribute("data-task") || "");
+    } catch (error) {
+      return;
+    }
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    payload.assignee_id = typeof data.assignee_id === "number" ? data.assignee_id : null;
+    card.setAttribute("data-task", JSON.stringify(payload));
   }
 
   // Полоса прогресса в карточке: ширина заливки в процентах и её цвет.
@@ -140,8 +157,12 @@
   // получила ещё и исполнителя, — а страница при этом не перезагружается.
   // Текст и подсказка повторяют разметку base.html («X | Y» и расшифровку
   // в title): сервер отдаёт только числа, оформление остаётся в одном месте.
+  // Значок «срок истекает» рисует шаблон (base.html); здесь он только
+  // показывается или прячется: перенос в «Готово» снимает предупреждение,
+  // возврат в работу — снова включает.
   function applyMenuBadge(data) {
     var badge = document.querySelector("[data-menu-badge]");
+    var due = document.querySelector("[data-menu-badge-due]");
     if (
       !badge ||
       typeof data.menu_unassigned !== "number" ||
@@ -156,6 +177,13 @@
       "title",
       "Не распределено: " + unassigned + " · Мои на очереди и в работе: " + mine
     );
+    if (due && typeof data.menu_due_soon === "number") {
+      if (data.menu_due_soon > 0) {
+        due.removeAttribute("hidden");
+      } else {
+        due.setAttribute("hidden", "");
+      }
+    }
   }
 
   // Обновляет окно «Задачи по сотрудникам» по ответу сервера. Окно рендерит

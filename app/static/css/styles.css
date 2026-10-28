@@ -245,6 +245,15 @@ button { font-family: inherit; }
 .menu__item svg { width: 20px; height: 20px; flex: none; }
 .menu__item .menu__text { flex: 1; }
 
+/* Пункт «Задачи»: счётчик стоит сразу после слова, значок срока — у правого
+   края пункта. Поэтому текст здесь не растягивается (в остальных пунктах
+   flex: 1 уводит метку .menu__count вправо), а свободное место забирает
+   auto-margin значка. display значку не задаётся намеренно: атрибут hidden
+   (срочных задач нет) снимает его со страницы, а собственное правило display
+   перебило бы это поведение. */
+.menu__item--tasks .menu__text { flex: none; }
+.menu__item--tasks [data-menu-badge-due] { margin-left: auto; }
+
 .menu__item:hover { color: #FFFFFF; background: rgba(212, 175, 55, 0.10); }
 .menu__item:hover::before { opacity: 1; }
 

@@ -39,6 +39,11 @@ WORKWEEK_DAYS = 5
 # По ним считается второе число метки «Задачи» в левом меню (count_menu_badge)
 MENU_BADGE_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress")
 
+# Столбцы, в которых предупреждение о сроке ещё имеет смысл: значок у правого
+# края пункта «Задачи» в меню. «Готово» не входит — работа закрыта, как и в
+# карточке доски, где подсветка срока снята стилями
+MENU_BADGE_DUE_STATUSES: tuple[str, ...] = (DEFAULT_STATUS, "in_progress", "review")
+
 # Столбцы, по которым окно «Задачи по сотрудникам» считает загрузку сотрудника
 # и строит полосу прогресса: «На очереди», «В работе», «Проверка». «Готово»
 # не входит: работа закрыта и в текущей загрузке не участвует
@@ -122,6 +127,21 @@ def working_days_left(due_date: date | None, today: date | None = None) -> int |
         if (start + timedelta(days=offset)).weekday() < WORKWEEK_DAYS:
             remaining += 1
     return remaining
+
+
+def _due_soon_limit(today: date | None = None) -> date:
+    """Последняя дата срока, которая ещё считается срочной (due_soon).
+
+    Нужна, чтобы посчитать срочные карточки одним SQL-запросом: условие
+    «осталось меньше DUE_SOON_WORKDAYS рабочих дней» сводится к
+    ``due_date <= эта дата``. Границу ищем перебором от сегодняшнего дня тем
+    же working_days_left: она уходит вперёд не больше чем на пару шагов.
+    """
+    start = today or date.today()
+    probe = start
+    while (working_days_left(probe, start) or 0) < DUE_SOON_WORKDAYS:
+        probe += timedelta(days=1)
+    return probe - timedelta(days=1)
 
 
 def _due_sort_key(task: Task) -> tuple[bool, date]:
@@ -305,10 +325,11 @@ async def count_tasks_by_assignee(db: AsyncSession) -> dict[int, int]:
 
 @dataclass(frozen=True)
 class TasksMenuBadge:
-    """Два числа метки «Задачи» в левом меню портала."""
+    """Числа метки «Задачи» в левом меню портала."""
 
     unassigned: int  # карточки без исполнителя
     mine: int  # карточки сотрудника в «На очереди» и «В работе»
+    due_soon: int  # карточки сотрудника с истекающим или прошедшим сроком
 
 
 async def count_menu_badge(db: AsyncSession, user_id: int) -> TasksMenuBadge:
@@ -319,19 +340,34 @@ async def count_menu_badge(db: AsyncSession, user_id: int) -> TasksMenuBadge:
     (MENU_BADGE_STATUSES). Карточки без исполнителя в него не входят, хотя доска
     показывает их в списке любого сотрудника: метка отражает личную загрузку.
 
-    Оба числа считаются одним запросом: count(case …) на SQLite подходит
+    Третье — карточки этого сотрудника с истекающим или прошедшим сроком в тех
+    же рабочих столбцах (MENU_BADGE_DUE_STATUSES): по нему base.html показывает
+    значок предупреждения слева от метки, такой же, как в карточке доски.
+
+    Все числа считаются одним запросом: count(case …) на SQLite подходит
     везде, в отличие от FILTER, доступного только с 3.30.
     """
     mine_condition = and_(
         Task.assignee_id == user_id,
         Task.status.in_(MENU_BADGE_STATUSES),
     )
+    # Срочные карточки сотрудника: тот же флаг due_soon, что у карточки доски
+    # (_to_list_item), но посчитанный в SQL по границе _due_soon_limit
+    due_soon_condition = and_(
+        Task.assignee_id == user_id,
+        Task.status.in_(MENU_BADGE_DUE_STATUSES),
+        Task.due_date.is_not(None),
+        Task.due_date <= _due_soon_limit(),
+    )
     unassigned = func.count(case((Task.assignee_id.is_(None), Task.id)))
     mine = func.count(case((mine_condition, Task.id)))
+    due_soon = func.count(case((due_soon_condition, Task.id)))
     row = (
-        await db.execute(select(unassigned, mine).where(Task.deleted_at.is_(None)))
+        await db.execute(
+            select(unassigned, mine, due_soon).where(Task.deleted_at.is_(None))
+        )
     ).one()
-    return TasksMenuBadge(unassigned=row[0], mine=row[1])
+    return TasksMenuBadge(unassigned=row[0], mine=row[1], due_soon=row[2])
 
 
 async def get_task(db: AsyncSession, task_id: int) -> Task | None:

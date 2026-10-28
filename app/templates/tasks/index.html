@@ -133,7 +133,8 @@
           {# data-task-assignee: сюда js/tasks.js пишет исполнителя из ответа
              /tasks/move/{id} — если поле было пустым, после переноса
              из «На очереди» это авторизованный сотрудник, имя меняется
-             без перезагрузки #}
+             без перезагрузки; там же скрипт правит assignee_id в data-task,
+             иначе окно правки показало бы «Не выбран» #}
           <span data-task-assignee>{{ task.assignee_name or "Без исполнителя" }}</span>
           <span class="card__bar" aria-hidden="true">|</span>
           <span class="card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</span>
@@ -295,5 +296,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=11"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=13"></script>
 {% endblock %}

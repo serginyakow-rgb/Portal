@@ -173,12 +173,13 @@
   }
 
   // Показатели тарифа по найденной доле: федеральный тариф всегда 500 ₽,
-  // льгота — база / знаменатель × числитель доли × число несовершеннолетних
-  // детей (округление до целого), региональный — база минус льгота,
-  // итого — федеральный плюс региональный
-  function calculateTariff(base, share, denominator, minors) {
+  // льгота — базовый региональный тариф × найденная доля (числитель/знаменатель
+  // поля «Нужно выделить долю...») × число несовершеннолетних детей;
+  // региональный — база минус льгота, итого — федеральный плюс региональный;
+  // округления нет — до целого округляет только вывод (formatMoney)
+  function calculateTariff(base, share, minors) {
     var federal = FEDERAL_TARIFF;
-    var benefit = Math.round((base / denominator) * share.numerator * minors);
+    var benefit = (base * share.numerator * minors) / share.denominator;
     var regional = base - benefit;
 
     setTariffOutput(outFederal, federal);
@@ -322,7 +323,7 @@
     }
     setMoneyOutput(outCostInput, share.cost);
 
-    calculateTariff(base, share, denominator, minors);
+    calculateTariff(base, share, minors);
   }
 
   // Суммы: значение в хранилище, показ с разделителями разрядов делает

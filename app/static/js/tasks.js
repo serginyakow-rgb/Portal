@@ -711,9 +711,11 @@
       closeConfirm(false);
     });
 
+    // Кнопка в цвете предупреждения — как «Удалить карточку» в окне правки:
+    // все подтверждения в разделе «Задачи» уводят карточку в корзину
     var confirmButton = document.createElement("button");
     confirmButton.type = "button";
-    confirmButton.className = "btn btn--primary";
+    confirmButton.className = "btn btn--ghost btn--danger";
     confirmButton.textContent = "Удалить";
     confirmButton.addEventListener("click", function () {
       closeConfirm(true);

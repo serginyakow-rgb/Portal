@@ -203,7 +203,7 @@
       <h2 class="panel__title" id="block-edit-title">Редактирование карточки</h2>
     </div>
 
-    <div class="modal__column">
+    <div class="modal__column modal__column--main">
       <div class="field">
         <label for="block-section-id">Раздел</label>
         <select id="block-section-id" name="section_id" required>
@@ -234,6 +234,13 @@
            удаления ставит js/templates_db.js из data-block-delete-url #}
         <button class="btn btn--ghost btn--danger" type="submit" formnovalidate data-block-remove
                 data-confirm="Удалить карточку?">Удалить карточку</button>
+
+        {# Копирование стоит справа от удаления и несёт тот же значок, что
+           и кнопка копирования на карточке: скрипт копирует текст из поля
+           «Текст карточки» и закрывает окно (тип button — форма не уходит) #}
+        <button class="btn btn--primary btn--icon" type="button" data-block-copy
+                title="Скопировать текст в буфер обмена"
+                aria-label="Скопировать текст в буфер обмена">{{ icon_copy() }}</button>
       </div>
     </div>
 

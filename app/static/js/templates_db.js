@@ -85,6 +85,28 @@
     );
   }
 
+  // Копирует текст из поля «Текст карточки» (с учётом правок в окне)
+  // и закрывает окно правки; если скопировать не удалось — окно остаётся
+  function copyBlockBody(dialog) {
+    var field = dialog.querySelector('textarea[name="body"]');
+    if (!field) {
+      return;
+    }
+    var text = field.value.trim();
+    if (!text) {
+      // Копировать нечего: окно не закрываем, чтобы сотрудник не потерял карточку
+      return;
+    }
+    writeText(text).then(
+      function () {
+        dialog.close();
+      },
+      function () {
+        window.alert("Скопировать текст не удалось: выделите его и нажмите Ctrl+C.");
+      }
+    );
+  }
+
   // Клик по кнопке с атрибутом data-copy-target копирует текст заготовки
   document.addEventListener("click", function (event) {
     var button = event.target.closest("[data-copy-target]");
@@ -305,6 +327,17 @@
       var ownDialog = closer.closest("dialog");
       if (ownDialog) {
         ownDialog.close();
+      }
+      return;
+    }
+
+    // Кнопка «Скопировать текст в буфер обмена» внутри окна: копирует
+    // содержимое поля «Текст карточки» и закрывает окно
+    var blockCopy = event.target.closest("[data-block-copy]");
+    if (blockCopy) {
+      var copyDialog = blockCopy.closest("dialog");
+      if (copyDialog) {
+        copyBlockBody(copyDialog);
       }
       return;
     }

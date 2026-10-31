@@ -1199,6 +1199,21 @@ button { font-family: inherit; }
    вылезают за край */
 .modal--task .modal__column > .calc__row { flex-wrap: wrap; }
 
+/* Окно правки карточки «Базы данных»: ряд кнопок стоит на нижней границе
+   окна — на одной линии с нижним краем поля «Текст карточки». Для этого
+   левая колонка тянется на всю высоту окна, а ряд кнопок прижимается
+   к её низу (промежутки между полями остаются прежними); кнопка
+   копирования остаётся квадратной — min-width кнопок окна её не касается.
+   Окна раздела «Задачи» правила с #block-edit-modal не затрагивают. */
+#block-edit-modal > .calc__form { align-items: stretch; }
+#block-edit-modal .modal__column--main { display: flex; flex-direction: column; gap: 12px; }
+#block-edit-modal .modal__column--main > .calc__row { margin-top: auto; }
+#block-edit-modal .calc__row > .btn--icon { min-width: 0; }
+/* Поле «Текст карточки» тянется до того же низа окна: низ textarea
+   и низ ряда кнопок оказываются на одной линии */
+#block-edit-modal .modal__column:not(.modal__column--main) { align-content: stretch; }
+#block-edit-modal .modal__column:not(.modal__column--main) > .field { grid-template-rows: auto 1fr; }
+
 /* Кнопка «Добавить карточку» и поле «Срок» — одной ширины: переменная задаёт
    min-width кнопке (её подпись не переносится) и ширину поля срока. На
    странице правки кнопка «Сохранить изменения» длиннее — min-width её

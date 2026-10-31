@@ -381,7 +381,11 @@
       return confirmDialog;
     }
     confirmDialog = document.createElement("dialog");
-    confirmDialog.className = "card";
+    // Классы как у окна подтверждения «Задач»: .modal не задаёт display, поэтому
+    // закрытое окно браузер скрывает сам. С классом .card (display: flex)
+    // закрытое окно оставалось видимым блоком внизу страницы — дублировало
+    // окно подтверждения и не исчезало после «Отмены»
+    confirmDialog.className = "modal modal--confirm";
     confirmDialog.setAttribute("aria-label", "Подтверждение действия");
 
     confirmDialogText = document.createElement("p");
@@ -397,9 +401,11 @@
     cancelButton.textContent = "Отмена";
     cancelButton.addEventListener("click", closeConfirmDialog);
 
+    // Кнопка в цвете предупреждения — как «Удалить» в окне подтверждения
+    // «Задач» и «Удалить карточку» в окне правки
     var confirmButton = document.createElement("button");
     confirmButton.type = "button";
-    confirmButton.className = "btn btn--primary";
+    confirmButton.className = "btn btn--ghost btn--danger";
     confirmButton.textContent = "Удалить";
     confirmButton.addEventListener("click", submitConfirmedForm);
 

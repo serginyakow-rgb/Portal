@@ -252,7 +252,13 @@ Portal/
 - новые теги создаются автоматически при сохранении заготовки;
 - удалить непустой раздел нельзя — `SectionNotEmptyError`;
 - после успешных действий выполняется `303 RedirectResponse` с флагом
-  `?saved=1`, `?created=1`, `?updated=1` или `?deleted=1`.
+  `?saved=1`, `?created=1`, `?updated=1` или `?deleted=1`;
+- правка и удаление карточки возвращают сотрудника туда, откуда он её открыл:
+  форма окна правки несёт скрытое поле `return_to` (адрес страницы из
+  `_db_return_url`, без флагов результата), `_redirect_after_change`
+  принимает только адреса с префиксом `/templates-db` и добавляет к ним
+  `?saved=1` или `?deleted=1`; чужой или пустой адрес заменяется на
+  `/templates-db/?saved=1` (`?deleted=1`).
 
 ### 4.4. `app/modules/settings` — справочники и разделы настроек
 
@@ -377,7 +383,7 @@ Middleware `tasks_menu_badge` работает на каждый `GET` стра�
 | Метод | Путь | Доступ | Обработчик | Шаблон / результат |
 | --- | --- | --- | --- | --- |
 | GET | `/templates-db/` | авторизован | `index_page` | `templates_db/index.html` |
-| GET | `/templates-db/search` | авторизован | `search_page` | `templates_db/index.html` с фильтрами `section_id`, `tag`, `q` |
+| GET | `/templates-db/search` | авторизован | `search_page` | `templates_db/index.html` с фильтрами `section_id`, `tag`, `q`; флаги `saved`, `deleted` — сообщения после правки из окна |
 | GET | `/templates-db/sections/new` | авторизован | `section_new_form` | `templates_db/section_form.html` |
 | POST | `/templates-db/sections/new` | авторизован | `section_new` | создание раздела, `303` на `?saved=1` |
 | GET | `/templates-db/sections/{section_id}/edit` | авторизован | `section_edit_form` | `templates_db/section_form.html` |
@@ -387,8 +393,8 @@ Middleware `tasks_menu_badge` работает на каждый `GET` стра�
 | POST | `/templates-db/blocks/new` | авторизован | `block_new` | создание заготовки, `303` на `?saved=1` |
 | GET | `/templates-db/blocks/{block_id}` | авторизован | `block_view` | `templates_db/block_view.html` |
 | GET | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit_form` | `templates_db/block_form.html` |
-| POST | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit` | сохранение, `303` на `?saved=1` |
-| POST | `/templates-db/blocks/{block_id}/delete` | авторизован | `block_delete` | удаление, `303` на `?deleted=1` |
+| POST | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit` | сохранение, `303` в раздел из `return_to` с `?saved=1` (без `return_to` — `/templates-db/?saved=1`) |
+| POST | `/templates-db/blocks/{block_id}/delete` | авторизован | `block_delete` | удаление, `303` в раздел из `return_to` с `?deleted=1`; тело формы читается через `request.form()`, пустое — не ошибка |
 
 ### 5.5. Настройки (`app/modules/settings/routes.py`)
 
@@ -713,7 +719,7 @@ Escape и клик по подложке.
 | `udostoverenie-dkp.js` | тариф за удостоверение ДКП (необязательная форма) |
 | `udostoverenie-dareniya.js` | тариф за удостоверение договора дарения |
 | `vydelenie-doley-msk.js` | подбор долей по МСК, стоимость доли и нотариальный тариф |
-| `templates_db.js` | копирование текста, поиск по Tab, подтверждение удаления |
+| `templates_db.js` | копирование текста, окно правки карточки по щелчку (и по Enter/пробелу), поиск по Tab, подтверждение удаления |
 | `tasks.js` | доска «Задачи»: перетаскивание с пересортировкой столбца по сроку, окно правки по щелчку на карточке (и по Enter/пробелу), окно создания, удаление из окна правки, чек-лист по типу, подтверждение удаления, обновление чисел метки «Задачи» и значка срока в меню после переноса |
 | `google-calendar.js` | опрос `/settings/google-calendar/connect/status`, ожидание входа в Google, перезагрузка страницы после подключения |
 | `app.js` | зарезервирован под общую логику портала |
@@ -886,6 +892,22 @@ POST /templates-db/blocks/new
 
 Поиск `GET /templates-db/search` фильтрует по разделу, тегу и подстроке в
 заголовке/тексте. Просмотр блока — отдельная страница с кнопкой копирования.
+
+Карточки на странице базы открывают окно «Редактирование карточки» щелчком
+(и с клавиатуры — Enter или пробел): `<article>` несёт `data-block-edit`,
+`data-block-form` (адрес сохранения), `data-block-delete-url`, `data-block`
+(JSON с заголовком, разделом, тегами и текстом), `role="button"`,
+`tabindex="0"` и `aria-haspopup="dialog"`. Окно (`#block-edit-modal`,
+`.modal modal--task`, две колонки) — одно на все карточки: слева раздел,
+заголовок, теги и кнопки «Сохранить изменения», «Отмена», «Удалить карточку»,
+справа текст карточки. `js/templates_db.js` переносит JSON в поля
+(`fillBlockDialog`) и открывает окно (`openBlockDialog`); щелчки по кнопке
+копирования и по тегам окно не открывают. Из кнопок на карточке осталось
+только копирование — просмотр и правка переехали в окно; без JS работает
+`<noscript>` со ссылкой на `/templates-db/blocks/{id}/edit`. «Удалить
+карточку» спрашивает подтверждение в общем окне (`data-confirm` и
+`formaction` берутся у нажатой кнопки — `event.submitter`), а после
+сохранения или удаления сотрудник остаётся на своей странице (`return_to`).
 
 ### 8.5. Рендеринг страницы
 

@@ -1,0 +1,61 @@
+{# Карточки «Базы данных» — одна порция списка: разметка карточки живёт
+   в одном месте, её подключают и страница (templates_db/index.html), и маршрут
+   догрузки GET /templates-db/blocks/more. Список приходит в blocks. #}
+{% from "_macros.html" import icon_copy %}
+{% for block in blocks %}
+{# Значения полей этой карточки для окна правки: одно окно на всю
+   страницу, js/templates_db.js разбирает JSON из атрибута data-block #}
+{% set edit_payload = {
+     "title": block.title,
+     "section_id": block.section_id,
+     "tags": block.tags|join(", "),
+     "body": block.body
+   } %}
+{# Карточка открывает окно «Редактирование карточки» щелчком мыши:
+   data-block-edit ловит js/templates_db.js, data-block-form
+   и data-block-delete-url — адреса сохранения и удаления для окна,
+   data-block — значения полей. role/tabindex нужны, чтобы карточку
+   можно было открыть с клавиатуры (Enter или пробел), aria-haspopup —
+   что откроется окно. Из кнопок на карточке осталось только
+   копирование: «Открыть», «Редактировать» и «Удалить» переехали
+   в окно правки. #}
+<article class="card"
+         data-block-edit
+         data-block-form="/templates-db/blocks/{{ block.id }}/edit"
+         data-block-delete-url="/templates-db/blocks/{{ block.id }}/delete"
+         data-block="{{ edit_payload|tojson|forceescape }}"
+         role="button" tabindex="0" aria-haspopup="dialog"
+         title="Открыть карточку на редактирование">
+  <div class="card__title">{{ block.title }}</div>
+  <p class="card__meta">{{ block.body_preview }}</p>
+
+  <p class="card__meta">
+    {% if block.tags %}
+    {% for tag_name in block.tags %}
+    <a class="status status--progress"
+       href="/templates-db/search?tag={{ tag_name|urlencode }}"
+       title="Показать карточки с этим тегом">{{ tag_name }}</a>
+    {% endfor %}
+    {% else %}Без тегов{% endif %}
+  </p>
+
+  <div class="card__foot">
+    <span class="card__meta">{{ block.section_name }}</span>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="button" data-copy-target="block-body-{{ block.id }}"
+              title="Скопировать текст в буфер обмена">
+        {{ icon_copy() }}
+      </button>
+
+      {# Без JavaScript окно не открыть: ссылка ведёт на страницу правки #}
+      <noscript>
+        <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}/edit">Редактировать</a>
+      </noscript>
+    </div>
+  </div>
+
+  {# Скрытый текст заготовки: источник для кнопки копирования #}
+  <div class="msg__bubble" hidden id="block-body-{{ block.id }}">{{ block.body }}</div>
+</article>
+{% endfor %}

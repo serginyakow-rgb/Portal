@@ -337,6 +337,10 @@ button { font-family: inherit; }
   gap: 14px;
 }
 
+/* Кнопка «Загрузить ещё…» под сеткой карточек «Базы данных»: догружает
+   следующую порцию из 30 карточек в конец списка (js/templates_db.js) */
+.cards-more { display: flex; justify-content: center; margin-top: 14px; }
+
 /* Строка поиска «Базы данных»: поле поиска растягивается, поле тегов — 300px,
    кнопки — по содержимому, чтобы всё оставалось в одной строке */
 .calc__form .cards { grid-template-columns: minmax(0, 1fr) 300px max-content; }

@@ -478,6 +478,90 @@
     openConfirmDialog(form, message, submitter ? submitter.getAttribute("formaction") : null);
   });
 
+  /* ── Порционная выдача карточек ───────────────────────────────────────── */
+
+  // Подписи кнопки «Загрузить ещё…»: обычная, на время запроса и при сбое связи
+  var LOAD_MORE_TEXT = "Загрузить ещё…";
+  var LOAD_MORE_BUSY_TEXT = "Загружаем…";
+  var LOAD_MORE_ERROR = "Не удалось загрузить карточки: проверьте связь и попробуйте ещё раз.";
+
+  // Пока запрос не вернулся, повторный клик по кнопке ничего не делает
+  var loadMoreBusy = false;
+
+  // Догружает следующую порцию карточек в конец сетки: страница не перезагружается,
+  // прокрутка остаётся на месте, а карточки приходят готовой разметкой того же
+  // шаблона (GET /templates-db/blocks/more) — окно правки и копирование у них
+  // работают так же, как у карточек первой порции
+  function loadMoreBlocks(button) {
+    // Именно сетка карточек: у строки поиска тот же класс .cards, поэтому
+    // порцию дописываем в элемент с признаком data-blocks-grid
+    var grid = document.querySelector("[data-blocks-grid]");
+    var url = button.getAttribute("data-load-more") || "";
+    // Сколько карточек уже показано и сколько найдено всего
+    var offset = parseInt(button.getAttribute("data-next-offset"), 10) || 0;
+    var total = parseInt(button.getAttribute("data-blocks-total"), 10) || 0;
+    if (loadMoreBusy || !grid || !url) {
+      return;
+    }
+
+    loadMoreBusy = true;
+    button.disabled = true;
+    button.textContent = LOAD_MORE_BUSY_TEXT;
+
+    var separator = url.indexOf("?") === -1 ? "?" : "&";
+    fetch(url + separator + "offset=" + offset, { credentials: "same-origin" })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+        // Свежее число найденного: карточки могли добавить или удалить,
+        // пока страница открыта
+        var fresh = parseInt(response.headers.get("X-Blocks-Total"), 10);
+        if (!isNaN(fresh)) {
+          total = fresh;
+        }
+        return response.text();
+      })
+      .then(function (html) {
+        // Разбор через <template>: узлы создаёт браузер, разметка страницы
+        // не переписывается, а скрипты из ответа не выполняются
+        var parsed = document.createElement("template");
+        parsed.innerHTML = html;
+        var added = parsed.content.querySelectorAll(".card").length;
+        grid.appendChild(parsed.content);
+        if (added === 0 || offset + added >= total) {
+          // Карточки закончились: кнопка больше не нужна
+          var wrapper = button.parentNode;
+          if (wrapper && wrapper.parentNode) {
+            wrapper.parentNode.removeChild(wrapper);
+          }
+          return;
+        }
+        button.setAttribute("data-next-offset", String(offset + added));
+      })
+      .catch(function () {
+        window.alert(LOAD_MORE_ERROR);
+      })
+      .then(function () {
+        loadMoreBusy = false;
+        // Кнопку могла убрать предыдущая ветка: тогда восстанавливать нечего
+        if (button.parentNode) {
+          button.disabled = false;
+          button.textContent = LOAD_MORE_TEXT;
+        }
+      });
+  }
+
+  // Клик по «Загрузить ещё…» догружает следующую порцию карточек
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-load-more]");
+    if (!button) {
+      return;
+    }
+    event.preventDefault();
+    loadMoreBlocks(button);
+  });
+
   // Функцию можно вызвать и напрямую: copyToClipboard(12)
   window.copyToClipboard = copyToClipboard;
   window.templatesDbIcons = { copy: ICON_COPY, done: ICON_DONE };

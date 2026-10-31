@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.templating import render
+from app.core.templating import render, render_partial
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
 from app.modules.templates_db.models import Section
@@ -26,6 +26,7 @@ from app.modules.templates_db.schemas import (
     TemplateBlockUpdate,
 )
 from app.modules.templates_db.service import (
+    BLOCKS_PAGE_SIZE,
     SectionNotEmptyError,
     create_block,
     create_section,
@@ -34,7 +35,7 @@ from app.modules.templates_db.service import (
     get_block,
     get_section,
     get_section_by_name,
-    list_blocks,
+    list_blocks_page,
     list_sections,
     read_block,
     update_block,
@@ -92,6 +93,22 @@ def _redirect_after_change(return_to: str, flag: str) -> RedirectResponse:
     )
 
 
+def _load_more_url(request: Request) -> str:
+    """Адрес догрузки следующей порции карточек: условия поиска без offset и флагов.
+
+    Адрес собирается из строки запроса страницы, поэтому догрузка продолжает
+    тот же список: раздел, тег и текст поиска остаются прежними, а метки
+    результата (?saved=, ?deleted=) в адрес не попадают.
+    """
+    pairs = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key not in {"saved", "deleted", "offset"}
+    ]
+    query = urlencode(pairs)
+    return f"/templates-db/blocks/more?{query}" if query else "/templates-db/blocks/more"
+
+
 async def _render_index(
     request: Request,
     db: AsyncSession,
@@ -108,13 +125,25 @@ async def _render_index(
     """Рендерит страницу базы: слева разделы, справа заготовки и результаты поиска."""
     sections = await list_sections(db)
     active_section = next((item for item in sections if item.id == section_id), None)
+    blocks, blocks_total = await list_blocks_page(
+        db,
+        section_id=section_id,
+        tag=tag,
+        query=query,
+        limit=BLOCKS_PAGE_SIZE,
+    )
     return render(
         request,
         "templates_db/index.html",
         user=user,
         active_menu=MENU_TEMPLATES_DB,
         sections=sections,
-        blocks=await list_blocks(db, section_id=section_id, tag=tag, query=query),
+        blocks=blocks,
+        blocks_total=blocks_total,
+        # Показано меньше, чем найдено: под сеткой появляется кнопка
+        # «Загрузить ещё…», которая догружает следующую порцию из 30 карточек
+        next_offset=len(blocks) if blocks_total > len(blocks) else None,
+        load_more_url=_load_more_url(request),
         section_id=section_id,
         active_section=active_section,
         tag=tag or "",
@@ -175,6 +204,38 @@ async def search_page(
         saved=saved,
         deleted=deleted,
     )
+
+
+@router.get("/blocks/more", response_class=HTMLResponse, response_model=None)
+async def blocks_more(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    section_id: int | None = None,
+    tag: str | None = None,
+    q: str | None = None,
+    offset: int = 0,
+) -> HTMLResponse:
+    """Следующая порция карточек для кнопки «Загрузить ещё…».
+
+    Отдаёт только разметку карточек — без страницы, шапки и меню:
+    js/templates_db.js дописывает её в конец сетки, поэтому список
+    продолжается без перезагрузки. Условия поиска приходят из адреса
+    страницы (их сохраняет `_load_more_url`), ``offset`` — сколько карточек
+    уже показано. За пределами списка возвращается пустой фрагмент.
+    """
+    blocks, blocks_total = await list_blocks_page(
+        db,
+        section_id=section_id,
+        tag=tag,
+        query=q,
+        limit=BLOCKS_PAGE_SIZE,
+        offset=max(offset, 0),
+    )
+    response = render_partial(request, "templates_db/_cards.html", blocks=blocks)
+    # Свежее число найденного: по нему страница понимает, что карточки закончились
+    response.headers["X-Blocks-Total"] = str(blocks_total)
+    return response
 
 
 def _render_section_form(

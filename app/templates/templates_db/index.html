@@ -118,69 +118,32 @@
           {% elif tag or q %}Результаты поиска
           {% else %}Все карточки{% endif %}
         </h2>
-        <span class="panel__hint">Найдено: {{ blocks|length }}</span>
+        <span class="panel__hint">Найдено: {{ blocks_total }}</span>
       </div>
 
       {% if blocks %}
-      <div class="cards">
-        {% for block in blocks %}
-        {# Значения полей этой карточки для окна правки: одно окно на всю
-           страницу, js/templates_db.js разбирает JSON из атрибута data-block #}
-        {% set edit_payload = {
-             "title": block.title,
-             "section_id": block.section_id,
-             "tags": block.tags|join(", "),
-             "body": block.body
-           } %}
-        {# Карточка открывает окно «Редактирование карточки» щелчком мыши:
-           data-block-edit ловит js/templates_db.js, data-block-form
-           и data-block-delete-url — адреса сохранения и удаления для окна,
-           data-block — значения полей. role/tabindex нужны, чтобы карточку
-           можно было открыть с клавиатуры (Enter или пробел), aria-haspopup —
-           что откроется окно. Из кнопок на карточке осталось только
-           копирование: «Открыть», «Редактировать» и «Удалить» переехали
-           в окно правки. #}
-        <article class="card"
-                 data-block-edit
-                 data-block-form="/templates-db/blocks/{{ block.id }}/edit"
-                 data-block-delete-url="/templates-db/blocks/{{ block.id }}/delete"
-                 data-block="{{ edit_payload|tojson|forceescape }}"
-                 role="button" tabindex="0" aria-haspopup="dialog"
-                 title="Открыть карточку на редактирование">
-          <div class="card__title">{{ block.title }}</div>
-          <p class="card__meta">{{ block.body_preview }}</p>
-
-          <p class="card__meta">
-            {% if block.tags %}
-            {% for tag_name in block.tags %}
-            <a class="status status--progress"
-               href="/templates-db/search?tag={{ tag_name|urlencode }}"
-               title="Показать карточки с этим тегом">{{ tag_name }}</a>
-            {% endfor %}
-            {% else %}Без тегов{% endif %}
-          </p>
-
-          <div class="card__foot">
-            <span class="card__meta">{{ block.section_name }}</span>
-
-            <div class="calc__row">
-              <button class="btn btn--primary" type="button" data-copy-target="block-body-{{ block.id }}"
-                      title="Скопировать текст в буфер обмена">
-                {{ icon_copy() }}
-              </button>
-
-              {# Без JavaScript окно не открыть: ссылка ведёт на страницу правки #}
-              <noscript>
-                <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}/edit">Редактировать</a>
-              </noscript>
-            </div>
-          </div>
-
-          {# Скрытый текст заготовки: источник для кнопки копирования #}
-          <div class="msg__bubble" hidden id="block-body-{{ block.id }}">{{ block.body }}</div>
-        </article>
-        {% endfor %}
+      {# data-blocks-grid — признак сетки карточек: кнопка «Загрузить ещё…»
+         дописывает порции именно сюда (js/templates_db.js), а не в строку
+         поиска, у которой тот же класс .cards #}
+      <div class="cards" data-blocks-grid>
+        {# Разметка одной карточки — в templates_db/_cards.html: тот же шаблон
+           отдаёт маршрут догрузки следующей порции (GET /templates-db/blocks/more) #}
+        {% include "templates_db/_cards.html" %}
       </div>
+
+      {% if next_offset %}
+      {# Найдено больше, чем поместилось в порцию: кнопка догружает следующие
+         30 карточек в конец сетки без перезагрузки страницы и прячется, когда
+         карточки закончатся (js/templates_db.js). data-next-offset — сколько
+         карточек уже показано, data-blocks-total — сколько найдено всего,
+         data-load-more — адрес догрузки с текущими условиями поиска #}
+      <div class="cards-more">
+        <button class="btn btn--ghost" type="button"
+                data-load-more="{{ load_more_url }}"
+                data-next-offset="{{ next_offset }}"
+                data-blocks-total="{{ blocks_total }}">Загрузить ещё…</button>
+      </div>
+      {% endif %}
       {% else %}
       <p class="panel__hint">Карточек не найдено: измените условия поиска или добавьте новую карточку.</p>
       {% endif %}
@@ -256,5 +219,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/templates_db.js') }}"></script>
+{# ?v= — версия статики: без него браузер сотрудника может взять из кеша
+   старый templates_db.js, в котором ещё нет кнопки «Загрузить ещё…» #}
+<script src="{{ url_for('static', path='js/templates_db.js') }}?v=15"></script>
 {% endblock %}

@@ -63,5 +63,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/templates_db.js') }}"></script>
+{# ?v= совпадает с templates_db/index.html: один и тот же файл кешируется одинаково #}
+<script src="{{ url_for('static', path='js/templates_db.js') }}?v=15"></script>
 {% endblock %}

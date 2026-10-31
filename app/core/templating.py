@@ -20,6 +20,17 @@ def initials(full_name: str) -> str:
     return "".join(part[0].upper() for part in parts[:2]) or "?"
 
 
+def render_partial(request: Request, template_name: str, **context: Any) -> HTMLResponse:
+    """Рендерит фрагмент страницы — без шапки, меню и общего контекста.
+
+    Фрагменты запрашивает JavaScript: например, кнопка «Загрузить ещё…»
+    в «Базе данных» получает следующую порцию карточек и дописывает её
+    в сетку (маршрут ``GET /templates-db/blocks/more``). Шаблону фрагмента
+    нужен только тот контекст, который передали явно.
+    """
+    return request.app.state.templates.TemplateResponse(request, template_name, context)
+
+
 def render(
     request: Request,
     template_name: str,

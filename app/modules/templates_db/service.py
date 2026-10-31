@@ -16,6 +16,11 @@ from app.modules.templates_db.schemas import (
     preview_text,
 )
 
+# Порция карточек на странице «Базы данных»: остальные догружает кнопка
+# «Загрузить ещё…» по 30 штук (js/templates_db.js), чтобы страница
+# с сотнями заготовок открывалась быстро
+BLOCKS_PAGE_SIZE = 30
+
 
 class SectionNotEmptyError(Exception):
     """Нельзя удалить раздел, в котором уже есть заготовки."""
@@ -136,7 +141,7 @@ async def delete_section(db: AsyncSession, section: Section) -> None:
     await db.commit()
 
 
-async def list_blocks(
+async def list_blocks_page(
     db: AsyncSession,
     *,
     section_id: int | None = None,
@@ -144,13 +149,17 @@ async def list_blocks(
     query: str | None = None,
     limit: int | None = None,
     offset: int = 0,
-) -> list[TemplateBlockListItem]:
-    """Заготовки с фильтрами: раздел, тег и текст (заголовок и содержание).
+) -> tuple[list[TemplateBlockListItem], int]:
+    """Порция заготовок с фильтрами: раздел, тег и текст (заголовок и содержание).
 
     Текст ищется на стороне Python: SQLite сравнивает регистр кириллицы
     некорректно (lower() в SQLite работает только с латиницей), а база
     конторы небольшая — несколько сотен заготовок, поэтому фильтрация
     в памяти незаметна по скорости.
+
+    Возвращает карточки порции (``limit``/``offset``) и общее число найденных:
+    по нему страница решает, показывать ли кнопку «Загрузить ещё…», а маршрут
+    догрузки отдаёт его в заголовке ответа.
     """
     stmt = (
         select(TemplateBlock)
@@ -175,11 +184,12 @@ async def list_blocks(
             for block in blocks
             if needle in block.title.casefold() or needle in block.body.casefold()
         ]
+    total = len(blocks)
     if offset:
         blocks = blocks[offset:]
     if limit:
         blocks = blocks[:limit]
-    return [_to_list_item(block) for block in blocks]
+    return [_to_list_item(block) for block in blocks], total
 
 
 async def get_block(db: AsyncSession, block_id: int) -> TemplateBlock | None:

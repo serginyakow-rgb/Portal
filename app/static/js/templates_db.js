@@ -1,5 +1,5 @@
-/* Модуль «База данных»: копирование текста заготовок, поиск по Tab при выходе
-   из полей поиска и подтверждение удаления. */
+/* Модуль «База данных»: копирование текста заготовок, окно правки карточки,
+   поиск по Tab при выходе из полей поиска и подтверждение удаления. */
 (function () {
   "use strict";
 
@@ -198,11 +198,149 @@
   });
 
 
+  /* ── Окно правки карточки ─────────────────────────────────────────────── */
+
+  // Открывает <dialog> и ставит фокус в первое поле — так же, как окно
+  // правки карточки в разделе «Задачи». Возвращает false, если браузер
+  // не умеет showModal(): тогда сработает ссылка из <noscript>
+  function openBlockDialog(dialog) {
+    if (typeof dialog.showModal !== "function") {
+      return false;
+    }
+    if (!dialog.open) {
+      dialog.showModal();
+    }
+    var firstField = dialog.querySelector("input:not([type=hidden]), select, textarea");
+    if (firstField) {
+      firstField.focus();
+    }
+    return true;
+  }
+
+  // Поле формы по имени: разметка окна задана в шаблоне, список полей
+  // в JavaScript не повторяется
+  function blockField(form, name) {
+    return form.querySelector('[name="' + name + '"]');
+  }
+
+  // Пункт списка разделов выбирается, только если он в списке есть
+  function selectBlockSection(select, value) {
+    if (!select || !value) {
+      return;
+    }
+    var sectionId = String(value);
+    for (var index = 0; index < select.options.length; index += 1) {
+      if (select.options[index].value === sectionId) {
+        select.value = sectionId;
+        return;
+      }
+    }
+  }
+
+  // Заполняет окно правки значениями карточки: JSON лежит в data-block,
+  // адреса сохранения и удаления — рядом (data-block-form,
+  // data-block-delete-url). Возвращает false, если данных нет
+  function fillBlockDialog(dialog, card) {
+    var form = dialog.querySelector("form");
+    if (!form) {
+      return false;
+    }
+    var payload;
+    try {
+      payload = JSON.parse(card.getAttribute("data-block") || "");
+    } catch (error) {
+      return false;
+    }
+    if (!payload || typeof payload !== "object") {
+      return false;
+    }
+
+    form.setAttribute("action", card.getAttribute("data-block-form") || "");
+    selectBlockSection(blockField(form, "section_id"), payload.section_id);
+
+    var title = blockField(form, "title");
+    if (title) {
+      title.value = payload.title || "";
+    }
+    var tags = blockField(form, "tags");
+    if (tags) {
+      tags.value = payload.tags || "";
+    }
+    var body = blockField(form, "body");
+    if (body) {
+      body.value = payload.body || "";
+    }
+
+    // «Удалить карточку» отправляет эту же форму на адрес удаления:
+    // formaction и текст подтверждения зависят от открытой карточки
+    var remove = form.querySelector("[data-block-remove]");
+    if (remove) {
+      remove.setAttribute("formaction", card.getAttribute("data-block-delete-url") || "");
+      remove.setAttribute("data-confirm", "Удалить карточку «" + (payload.title || "") + "»?");
+    }
+    return true;
+  }
+
+  // Кнопки и ссылки внутри карточки (копирование, теги) обрабатывают клик
+  // сами: окно правки по ним не открывается
+  function isCardAction(element) {
+    return !!element.closest(".btn, a, form, input, select, textarea, label");
+  }
+
+  document.addEventListener("click", function (event) {
+    var card = event.target.closest("[data-block-edit]");
+    if (card) {
+      if (!isCardAction(event.target)) {
+        var dialog = document.getElementById("block-edit-modal");
+        if (dialog && fillBlockDialog(dialog, card) && openBlockDialog(dialog)) {
+          event.preventDefault();
+        }
+      }
+      return;
+    }
+
+    // Кнопка «Отмена» внутри окна
+    var closer = event.target.closest("[data-modal-close]");
+    if (closer) {
+      var ownDialog = closer.closest("dialog");
+      if (ownDialog) {
+        ownDialog.close();
+      }
+      return;
+    }
+
+    // Клик по затемнённой подложке: цель совпадает с самим окном
+    if (event.target.classList && event.target.classList.contains("modal")) {
+      if (event.target.tagName === "DIALOG") {
+        event.target.close();
+      }
+    }
+  });
+
+  // Карточку можно открыть и с клавиатуры: Enter или пробел
+  // (role="button" tabindex="0" в templates_db/index.html)
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    var card = event.target.closest("[data-block-edit]");
+    if (!card || isCardAction(event.target)) {
+      return;
+    }
+    var dialog = document.getElementById("block-edit-modal");
+    if (dialog && fillBlockDialog(dialog, card) && openBlockDialog(dialog)) {
+      event.preventDefault();
+    }
+  });
+
+
   // Окно подтверждения показываем сами: у браузерного window.confirm() сверху
   // печатается служебная строка «Подтвердите действие на сайте 127.0.0.1»
   var confirmDialog = null;
   var confirmDialogText = null;
   var confirmPendingForm = null;
+  // Адрес отправки из formaction нажатой кнопки (удаление из окна правки)
+  var confirmPendingAction = null;
 
   // Создаёт окно подтверждения при первом обращении; дальше окно переиспользуется
   function ensureConfirmDialog() {
@@ -239,6 +377,7 @@
     // Окно закрывается и по Escape — тогда просто забываем ожидающую форму
     confirmDialog.addEventListener("close", function () {
       confirmPendingForm = null;
+      confirmPendingAction = null;
     });
     document.body.appendChild(confirmDialog);
     return confirmDialog;
@@ -246,6 +385,7 @@
 
   function closeConfirmDialog() {
     confirmPendingForm = null;
+    confirmPendingAction = null;
     if (confirmDialog) {
       confirmDialog.close();
     }
@@ -254,39 +394,55 @@
   // form.submit() отправляет форму напрямую, минуя обработчик submit — окно не повторяется
   function submitConfirmedForm() {
     var form = confirmPendingForm;
+    var action = confirmPendingAction;
     confirmPendingForm = null;
+    confirmPendingAction = null;
     if (confirmDialog) {
       confirmDialog.close();
     }
     if (form) {
+      // Адрес из formaction нажатой кнопки: форма окна правки отправляется
+      // не на action, а на адрес удаления
+      if (action) {
+        form.setAttribute("action", action);
+      }
       form.submit();
     }
   }
 
-  function openConfirmDialog(form, message) {
+  function openConfirmDialog(form, message, action) {
     ensureConfirmDialog();
     if (typeof confirmDialog.showModal !== "function") {
       // Браузер без <dialog>: подтверждение пропускаем, чтобы системное окно не появлялось
+      if (action) {
+        form.setAttribute("action", action);
+      }
       form.submit();
       return;
     }
     confirmPendingForm = form;
+    confirmPendingAction = action || null;
     confirmDialogText.textContent = message;
     confirmDialog.showModal();
   }
 
-  // Формы с атрибутом data-confirm спрашивают подтверждение перед отправкой
+  // Формы с атрибутом data-confirm спрашивают подтверждение перед отправкой.
+  // Сообщение и адрес отправки берутся у нажатой кнопки: «Удалить карточку»
+  // в окне правки несёт свои data-confirm и formaction, а формы удаления
+  // на страницах — data-confirm на самой форме
   document.addEventListener("submit", function (event) {
     var form = event.target;
     if (!form || typeof form.getAttribute !== "function") {
       return;
     }
-    var message = form.getAttribute("data-confirm");
+    var submitter = event.submitter || null;
+    var message = (submitter && submitter.getAttribute("data-confirm"))
+      || form.getAttribute("data-confirm");
     if (!message) {
       return;
     }
     event.preventDefault();
-    openConfirmDialog(form, message);
+    openConfirmDialog(form, message, submitter ? submitter.getAttribute("formaction") : null);
   });
 
   // Функцию можно вызвать и напрямую: copyToClipboard(12)

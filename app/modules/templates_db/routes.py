@@ -4,6 +4,7 @@
 поэтому внутри модуля пути указаны без префикса.
 """
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -60,6 +61,37 @@ def _validation_message(exc: ValidationError) -> str:
     return message.removeprefix("Value error, ")
 
 
+def _db_return_url(request: Request) -> str:
+    """Адрес раздела, из которого открыли карточку: раздел, поиск или вся база.
+
+    Метки результата (?saved=, ?deleted=) в адрес не попадают: после повторного
+    сохранения они не накапливаются в строке запроса.
+    """
+    pairs = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key not in {"saved", "deleted"}
+    ]
+    return f"{request.url.path}?{urlencode(pairs)}" if pairs else request.url.path
+
+
+def _redirect_after_change(return_to: str, flag: str) -> RedirectResponse:
+    """Возвращает сотрудника туда, откуда он открыл карточку, с меткой о результате.
+
+    Принимаются только адреса этого раздела: чужие ссылки в форму не подставляем.
+    """
+    if return_to.startswith("/templates-db"):
+        separator = "&" if "?" in return_to else "?"
+        return RedirectResponse(
+            f"{return_to}{separator}{flag}=1",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        f"/templates-db/?{flag}=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 async def _render_index(
     request: Request,
     db: AsyncSession,
@@ -90,6 +122,8 @@ async def _render_index(
         error=error,
         saved=saved,
         deleted=deleted,
+        # Адрес возврата после сохранения или удаления карточки в окне правки
+        return_to=_db_return_url(request),
         status_code=status_code,
     )
 
@@ -122,9 +156,25 @@ async def search_page(
     section_id: int | None = None,
     tag: str | None = None,
     q: str | None = None,
+    saved: bool = False,
+    deleted: bool = False,
 ) -> HTMLResponse:
-    """Поиск заготовок: по разделу, по тегу и по тексту (заголовок и содержание)."""
-    return await _render_index(request, db, user, section_id=section_id, tag=tag, query=q)
+    """Поиск заготовок: по разделу, по тегу и по тексту (заголовок и содержание).
+
+    ``saved`` и ``deleted`` приходят после сохранения и удаления карточки
+    из окна правки: сотрудник остаётся на странице поиска и видит отметку
+    о результате.
+    """
+    return await _render_index(
+        request,
+        db,
+        user,
+        section_id=section_id,
+        tag=tag,
+        query=q,
+        saved=saved,
+        deleted=deleted,
+    )
 
 
 def _render_section_form(
@@ -526,6 +576,9 @@ async def block_edit(
     title: Annotated[str, Form()] = "",
     body: Annotated[str, Form()] = "",
     tags: Annotated[str, Form()] = "",
+    # Адрес раздела, из которого открыли карточку в окне правки:
+    # после сохранения сотрудник остаётся там же
+    return_to: Annotated[str, Form()] = "",
 ) -> HTMLResponse | RedirectResponse:
     """Сохраняет правку заготовки и пересобирает её теги."""
     block = await get_block(db, block_id)
@@ -574,7 +627,7 @@ async def block_edit(
         )
 
     await update_block(db, block, data)
-    return RedirectResponse("/templates-db/?saved=1", status_code=status.HTTP_303_SEE_OTHER)
+    return _redirect_after_change(return_to, "saved")
 
 
 @router.post("/blocks/{block_id}/delete", response_class=HTMLResponse, response_model=None)
@@ -585,6 +638,11 @@ async def block_delete(
     block_id: int,
 ) -> HTMLResponse | RedirectResponse:
     """Удаляет заготовку из базы заготовок."""
+    # Адрес возврата приходит из окна правки; со страницы просмотра форма
+    # отправляется без полей, поэтому тело читаем напрямую — пустое не ошибка
+    form = await request.form()
+    return_to = str(form.get("return_to") or "")
+
     block = await get_block(db, block_id)
     if block is None:
         return await _render_index(
@@ -596,4 +654,4 @@ async def block_delete(
         )
 
     await delete_block(db, block)
-    return RedirectResponse("/templates-db/?deleted=1", status_code=status.HTTP_303_SEE_OTHER)
+    return _redirect_after_change(return_to, "deleted")

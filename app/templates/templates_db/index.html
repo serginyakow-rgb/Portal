@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon_plus, icon_folder, icon_eye, icon_copy, icon_edit, icon_trash %}
+{% from "_macros.html" import icon_plus, icon_folder, icon_copy %}
 
 {% block title %}База данных · Нотариальная контора{% endblock %}
 
@@ -124,7 +124,29 @@
       {% if blocks %}
       <div class="cards">
         {% for block in blocks %}
-        <article class="card">
+        {# Значения полей этой карточки для окна правки: одно окно на всю
+           страницу, js/templates_db.js разбирает JSON из атрибута data-block #}
+        {% set edit_payload = {
+             "title": block.title,
+             "section_id": block.section_id,
+             "tags": block.tags|join(", "),
+             "body": block.body
+           } %}
+        {# Карточка открывает окно «Редактирование карточки» щелчком мыши:
+           data-block-edit ловит js/templates_db.js, data-block-form
+           и data-block-delete-url — адреса сохранения и удаления для окна,
+           data-block — значения полей. role/tabindex нужны, чтобы карточку
+           можно было открыть с клавиатуры (Enter или пробел), aria-haspopup —
+           что откроется окно. Из кнопок на карточке осталось только
+           копирование: «Открыть», «Редактировать» и «Удалить» переехали
+           в окно правки. #}
+        <article class="card"
+                 data-block-edit
+                 data-block-form="/templates-db/blocks/{{ block.id }}/edit"
+                 data-block-delete-url="/templates-db/blocks/{{ block.id }}/delete"
+                 data-block="{{ edit_payload|tojson|forceescape }}"
+                 role="button" tabindex="0" aria-haspopup="dialog"
+                 title="Открыть карточку на редактирование">
           <div class="card__title">{{ block.title }}</div>
           <p class="card__meta">{{ block.body_preview }}</p>
 
@@ -142,27 +164,15 @@
             <span class="card__meta">{{ block.section_name }}</span>
 
             <div class="calc__row">
-              <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}"
-                 title="Открыть карточку">
-                {{ icon_eye() }}
-              </a>
-
               <button class="btn btn--primary" type="button" data-copy-target="block-body-{{ block.id }}"
                       title="Скопировать текст в буфер обмена">
                 {{ icon_copy() }}
               </button>
 
-              <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}/edit"
-                 title="Редактировать карточку">
-                {{ icon_edit() }}
-              </a>
-
-              <form method="post" action="/templates-db/blocks/{{ block.id }}/delete"
-                    data-confirm="Удалить карточку «{{ block.title }}»?">
-                <button class="btn btn--ghost" type="submit" title="Удалить карточку">
-                  {{ icon_trash() }}
-                </button>
-              </form>
+              {# Без JavaScript окно не открыть: ссылка ведёт на страницу правки #}
+              <noscript>
+                <a class="btn btn--ghost" href="/templates-db/blocks/{{ block.id }}/edit">Редактировать</a>
+              </noscript>
             </div>
           </div>
 
@@ -177,6 +187,65 @@
     </section>
   </div>
 </div>
+
+{# Окно правки карточки: одно на всю страницу, значения подставляет
+   js/templates_db.js из data-block нажатой карточки, а адрес сохранения
+   (action) пустой — его ставит скрипт из data-block-form. Разметка и размер
+   повторяют окно правки карточки раздела «Задачи» (.modal--task): две
+   колонки, слева раздел, заголовок, теги и кнопки, справа текст карточки.
+   Без скрипта окно не открывается, поэтому в карточке лежит <noscript>
+   с обычной ссылкой на страницу правки.
+   return_to — адрес раздела, куда вернуть сотрудника после сохранения
+   или удаления (см. _redirect_after_change в routes.py). #}
+<dialog class="modal modal--task" id="block-edit-modal" aria-labelledby="block-edit-title">
+  <form class="calc__form" method="post" action="">
+    <div class="panel__head">
+      <h2 class="panel__title" id="block-edit-title">Редактирование карточки</h2>
+    </div>
+
+    <div class="modal__column">
+      <div class="field">
+        <label for="block-section-id">Раздел</label>
+        <select id="block-section-id" name="section_id" required>
+          {% for section in sections %}
+          <option value="{{ section.id }}">{{ section.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="block-title">Заголовок карточки</label>
+        <input id="block-title" name="title" type="text" required maxlength="200" autocomplete="off"
+               placeholder="Например: Доверенность на получение документов">
+      </div>
+
+      <div class="field">
+        <label for="block-tags">Теги (через запятую)</label>
+        <input id="block-tags" name="tags" type="text" autocomplete="off"
+               placeholder="Например: доверенность, документы">
+      </div>
+
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+        <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+        {# formnovalidate: пустые поля не мешают удалить карточку; адрес
+           удаления ставит js/templates_db.js из data-block-delete-url #}
+        <button class="btn btn--ghost btn--danger" type="submit" formnovalidate data-block-remove
+                data-confirm="Удалить карточку?">Удалить карточку</button>
+      </div>
+    </div>
+
+    <div class="modal__column">
+      <div class="field">
+        <label for="block-body">Текст карточки</label>
+        <textarea id="block-body" name="body" rows="14" required
+                  placeholder="Наберите или вставьте текст карточки"></textarea>
+      </div>
+    </div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}

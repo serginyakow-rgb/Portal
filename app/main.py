@@ -9,7 +9,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.concurrency import run_in_threadpool
 
+from app.core.config import get_settings
 from app.core.database import async_session_maker, engine
 from app.core.templating import MENU_PANEL, render
 from app.db.base import Base
@@ -18,6 +20,11 @@ from app.db.base import Base
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.auth.dependencies import CurrentUser, get_optional_user
 from app.modules.auth.routes import router as auth_router
+
+# Регистрация разделов резервного копирования: таблиц у модуля нет, но его
+# импорт добавляет разделы в реестр (app/modules/backup/registry.py)
+from app.modules import backup as backup_module  # noqa: F401
+from app.modules.backup.routes import router as backup_router
 from app.modules.calculators.routes import router as calculators_router
 from app.modules.settings.routes import router as settings_router
 from app.modules.tasks import models as tasks_models  # noqa: F401 (таблица tasks)
@@ -50,10 +57,25 @@ async def _enable_sqlite_wal() -> None:
             logger.warning("Режим WAL для SQLite не включён: %s", exc)
 
 
+async def _prepare_backup_dir() -> None:
+    """Создаёт папку резервных копий из настроек (BACKUP_DIR).
+
+    Сбой (например, каталог только на чтение) запуску не мешает: портал
+    работает как раньше, а раздел «Резервное копирование» сообщит об ошибке
+    записи при попытке создать файл.
+    """
+    directory = get_settings().BACKUP_DIR
+    try:
+        await run_in_threadpool(directory.mkdir, parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning("Папка резервных копий %s недоступна: %s", directory, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Создаёт таблицы БД при старте и освобождает движок при остановке."""
+    """Создаёт таблицы БД и папку копий при старте, освобождает движок при остановке."""
     await _enable_sqlite_wal()
+    await _prepare_backup_dir()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -105,6 +127,7 @@ async def tasks_menu_badge(
 
 app.include_router(auth_router)
 app.include_router(settings_router)
+app.include_router(backup_router)
 app.include_router(calculators_router, prefix="/calculators", tags=["calculators"])
 app.include_router(tasks_router, prefix="/tasks")
 app.include_router(templates_db_router, prefix="/templates-db")

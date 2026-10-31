@@ -40,6 +40,11 @@
 | Калькулятор долей по МСК | `GET /calculators/vydelenie-doley-msk` | авторизованные | работает (расчёт в браузере) |
 | Калькулятор госпошлины | `GET/POST /calculators/gosposhlina` | авторизованные | работает (расчёт на сервере) |
 | Задачи | `GET /tasks/` | авторизованные | заглушка — заголовок «Задачи» |
+| Резервное копирование | `GET /settings/backup` | только `admin` | работает |
+| Создание копии | `POST /settings/backup/create` | только `admin` | работает (файл в `backups/`) |
+| Список файлов копий (JSON) | `GET /settings/backup/files` | только `admin` | работает |
+| Скачивание копии | `GET /settings/backup/download/{name}` | только `admin` | работает (вложение) |
+| Восстановление из копии | `POST /settings/backup/restore` | только `admin` | работает (режим «заменить всё», автобэкап) |
 
 ## Калькуляторы: что считают
 

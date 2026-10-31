@@ -13,6 +13,7 @@ redirect_uri только для loopback-адресов (http://localhost, http
 Сохранённый токен общий: после одного подключения статус, проверка и создание
 событий работают с любого компьютера локальной сети.
 """
+import base64
 import json
 import logging
 import os
@@ -250,6 +251,105 @@ def is_connected() -> bool:
     раздел настроек — get_status().
     """
     return TOKEN_PATH.is_file()
+
+
+def export_state(*, include_credentials: bool = False) -> dict[str, Any]:
+    """Состояние связи для резервной копии: почта, флаги файлов и их содержимое.
+
+    Без ``include_credentials`` в копию попадают только флаги — файл остаётся
+    несекретным. С флагом кладётся содержимое ключа и токена в base64: такой
+    файл нужно хранить как секрет, он даёт доступ к календарю аккаунта.
+    """
+    return {
+        "account": _read_account(),
+        "has_credentials": CREDENTIALS_PATH.is_file(),
+        "has_token": TOKEN_PATH.is_file(),
+        "credentials": _file_payload(CREDENTIALS_PATH) if include_credentials else None,
+        "token": _file_payload(TOKEN_PATH) if include_credentials else None,
+    }
+
+
+def _file_payload(path: Path) -> dict[str, str] | None:
+    """Файл в виде «имя + base64» для раздела копии; файла нет — None."""
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    return {"name": path.name, "content_base64": base64.b64encode(raw).decode("ascii")}
+
+
+def _decode_payload(payload: Any, label: str) -> bytes | None:
+    """Содержимое файла из копии: base64 → байты; файла в копии нет — None."""
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise GoogleCalendarError(
+            f"В копии повреждён {label}: ожидался объект с содержимым файла"
+        )
+    content = payload.get("content_base64")
+    if not isinstance(content, str) or not content:
+        raise GoogleCalendarError(
+            f"В копии повреждён {label}: нет содержимого файла"
+        )
+    try:
+        return base64.b64decode(content, validate=True)
+    except ValueError as exc:
+        raise GoogleCalendarError(
+            f"В копии повреждён {label}: содержимое не читается (base64)"
+        ) from exc
+
+
+def import_state(data: dict[str, Any], include_credentials: bool = True) -> None:
+    """Возвращает файлы связи на место из раздела резервной копии.
+
+    Сначала проверяются и декодируются все файлы из копии, и только потом
+    что-либо пишется на диск: повреждённая копия не должна оставить портал
+    с полузаписанным ключом. Файлы, которых в копии нет, не удаляются —
+    восстановление старой копии без секретов не рвёт настроенную связь.
+    """
+    if not isinstance(data, dict):
+        raise GoogleCalendarError("Раздел Google Календаря в копии повреждён")
+
+    prepared: list[tuple[Path, bytes]] = []
+    if include_credentials:
+        for key, path, label in (
+            ("credentials", CREDENTIALS_PATH, "ключ OAuth-клиента"),
+            ("token", TOKEN_PATH, "токен доступа"),
+        ):
+            raw = _decode_payload(data.get(key), label)
+            if raw is not None:
+                prepared.append((path, raw))
+
+    account = data.get("account")
+    if account is not None and not isinstance(account, str):
+        raise GoogleCalendarError(
+            "В копии повреждён раздел Google Календаря: почта аккаунта"
+        )
+
+    if prepared or (isinstance(account, str) and account.strip()):
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise GoogleCalendarError(
+                f"Не удалось создать папку {CONFIG_DIR}: {exc.strerror or exc}"
+            ) from exc
+
+    for path, raw in prepared:
+        try:
+            path.write_bytes(raw)
+        except OSError as exc:
+            raise GoogleCalendarError(
+                f"Не удалось записать файл {path.name}: {exc.strerror or exc}"
+            ) from exc
+        logger.info("Восстановлен файл Google Календаря: %s", path.name)
+
+    if isinstance(account, str) and account.strip():
+        try:
+            ACCOUNT_PATH.write_text(account.strip(), encoding="utf-8")
+        except OSError as exc:
+            raise GoogleCalendarError(
+                f"Не удалось записать файл {ACCOUNT_PATH.name}: {exc.strerror or exc}"
+            ) from exc
 
 
 def _read_account() -> str | None:

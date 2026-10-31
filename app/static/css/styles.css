@@ -1403,3 +1403,32 @@ dialog:not([open]) { display: none; }
    возвращается само — без перерисовки карточки скриптом */
 .board__column[data-status="done"] .card__due--soon { font-weight: inherit; color: inherit; }
 .board__column[data-status="done"] .card__due-alert { display: none; }
+
+/* ── Настройки → Резервное копирование ─────────────────────────────────────
+   Предупреждение о секретах (.note) и ряд кнопок в строке таблицы файлов.
+   Селекторы ограничены блоками раздела (#backup-panel, #backup-files):
+   остальные разделы настроек эти правила не затрагивают. */
+#backup-panel .note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  background: rgba(240, 120, 90, .08);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+/* Имя папки в подсказке: код читается, но не спорит с заголовком */
+#backup-panel .panel__hint code {
+  font-size: 12px;
+  color: var(--navy);
+  overflow-wrap: anywhere;
+}
+
+#backup-files .backup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

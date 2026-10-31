@@ -1,5 +1,6 @@
 """Настройки приложения: читаются из .env через pydantic-settings."""
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +14,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./portal.db"
     # Время жизни access-токена в минутах (по умолчанию 8 часов)
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    # Папка резервных копий портала (portal-backup-*.json); создаётся при старте
+    BACKUP_DIR: Path = Path("backups")
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -41,6 +41,7 @@ flowchart LR
     TDB["modules/templates_db<br/>/templates-db/*"]
     Tasks["modules/tasks<br/>/tasks/*"]
     Settings["modules/settings<br/>/settings/*"]
+    Backup["modules/backup<br/>/settings/backup/*"]
     GCal["modules/google_calendar<br/>service.py, OAuth + API"]
     Google["Google Calendar API<br/>внешний сервис"]
     Services["service.py модулей<br/>бизнес-логика"]
@@ -54,6 +55,7 @@ flowchart LR
     Main --> TDB
     Main --> Tasks
     Main --> Settings
+    Main --> Backup
     Settings --> GCal
     GCal -->|HTTPS| Google
     Auth --> Render
@@ -61,6 +63,7 @@ flowchart LR
     TDB --> Render
     Tasks --> Render
     Settings --> Render
+    Backup --> Render
     GCal --> Render
     Render -->|HTML| Browser
     Auth --> Services
@@ -68,6 +71,7 @@ flowchart LR
     TDB --> Services
     Tasks --> Services
     Settings --> Services
+    Backup --> Services
     Services --> ORM
     ORM --> DB
 ```
@@ -76,7 +80,12 @@ flowchart LR
 
 - Роутеры подключаются только в `app/main.py`; префиксы задаются там же:
   `auth` — `/auth`, `calculators` — `/calculators`, `tasks` — `/tasks`,
-  `templates_db` — `/templates-db`.
+  `templates_db` — `/templates-db`. У `settings` и `backup` пути прописаны
+  целиком (`/settings/...`), поэтому они подключаются без префикса.
+- Разделы резервной копии регистрируются в реестре `modules/backup/registry.py`:
+  ядро бэкапа не знает ни одной таблицы. Новый модуль добавляет
+  `app/modules/<модуль>/backup.py` с `register(BackupSection(...))` и один
+  импорт в `main.py` — `service.py` при этом не правится.
 - Все страницы рендерятся через `render()` из `app/core/templating.py`, который
   добавляет `user`, `initials`, `role_label`, `role_labels`, `active_menu`,
   `tasks_badge`. Фрагменты для JavaScript (например, порция карточек
@@ -108,6 +117,7 @@ Portal/
 │   │   └── base.py              единый DeclarativeBase
 │   ├── modules/
 │   │   ├── auth/                пользователи, вход, роли, профиль
+│   │   ├── backup/              резервное копирование: реестр разделов и файл JSON
 │   │   ├── calculators/         каталог и страницы калькуляторов
 │   │   ├── google_calendar/     OAuth-клиент, токен, события Google Календаря
 │   │   ├── settings/            справочники и разделы настроек
@@ -119,10 +129,11 @@ Portal/
 │   │   ├── _users_panel.html    раздел «Пользователи» внутри настроек
 │   │   ├── _inheritance_tariff_panel.html   региональный тариф наследства
 │   │   ├── _google_calendar_panel.html      связь с Google Календарём
+│   │   ├── _backup_panel.html              резервное копирование
 │   │   ├── auth/                login.html, profile.html
 │   │   ├── dashboard/           index.html
 │   │   ├── calculators/         index + 9 страниц + _block_template.html
-│   │   ├── settings/            index.html, section.html
+│   │   ├── settings/            index.html — меню разделов настроек
 │   │   ├── tasks/               index.html — доска с окнами создания и правки,
 │   │   │                        trash.html — корзина, form.html — карточка,
 │   │   │                        _board.html — столбцы доски (страница и фрагмент),
@@ -132,7 +143,7 @@ Portal/
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
 │       ├── img/logo.jpg
-│       └── js/                  15 клиентских скриптов
+│       └── js/                  16 клиентских скриптов
 ├── clinerules/
 │   ├── 01-carcass.md            стек, структура, запреты
 │   └── 02-calculators.md        правила и эталоны калькуляторов
@@ -145,6 +156,7 @@ Portal/
 ├── README.md                    вход, роли, запуск, переменные окружения
 ├── SetupCal.md                  инструкция подключения Google Календаря
 ├── config/google_calendar/      ключ OAuth-клиента и токен (не в git)
+├── backups/                     резервные копии портала portal-backup-*.json (не в git)
 ├── .env.example                 шаблон настроек
 ├── portal.db                    локальная SQLite (не в git)
 ├── uvicorn.log                  лог запуска (игнорируется)
@@ -276,19 +288,19 @@ Portal/
 | `models.py` | `InheritanceTariff` (таблица `inheritance_tariffs`: `asset_type`, `rate`) |
 | `schemas.py` | `InheritanceTariffInput`: вид имущества до 200 символов, тариф — целое больше нуля |
 | `service.py` | список, чтение, создание, правка и удаление строк справочника |
-| `routes.py` | `APIRouter(tags=["settings"])`: пользователи, резервное копирование, тариф, Google Календарь |
+| `routes.py` | `APIRouter(tags=["settings"])`: пользователи, тариф, Google Календарь |
 
 Особенности:
 
 - доступ ко всем маршрутам закрыт `require_role("admin")` (`AdminUser`);
 - страница `settings/index.html` — общее меню разделов слева (`?section`), справа
-  подключается партиал `_users_panel.html`, `_inheritance_tariff_panel.html` или
-  `_google_calendar_panel.html`;
+  подключается партиал `_users_panel.html`, `_backup_panel.html`,
+  `_inheritance_tariff_panel.html` или `_google_calendar_panel.html`;
 - `_render_settings()` и `_render_tariffs_section()` собирают контекст страницы,
   ошибки валидации возвращаются с кодом `400` без редиректа;
 - успешные действия завершаются `303` с флагом `?created=1`, `?updated=1`,
   `?deleted=1`, `?uploaded=1`, `?disconnected=1`;
-- `/settings/backup` — по-прежнему заглушка `settings/section.html`.
+- раздел «Резервное копирование» живёт в отдельном модуле — см. §4.6.
 
 ### 4.5. `app/modules/google_calendar` — связь с Google Календарём
 
@@ -339,6 +351,62 @@ Portal/
 6. Ошибки входа переводятся в понятный текст функциями `_connect_error_message()`
    и `_connect_error_hint()` (тестовые пользователи, статус Testing, доступ к
    scope, `redirect_uri_mismatch`).
+
+### 4.6. `app/modules/backup` — резервное копирование
+
+| Файл | Назначение |
+| --- | --- |
+| `registry.py` | контракт раздела `BackupSection`, реестр `SECTIONS`, `register()`, `ordered_sections()`, `sections_by_key()`, ошибка `BackupValidationError`, флаги выгрузки `export_options()`/`options()`, накопитель предупреждений `collect_warnings()`/`warn()` |
+| `sections.py` | пять разделов портала (`users`, `inheritance`, `templates_db`, `tasks`, `google_calendar`) и `register_sections()` |
+| `schemas.py` | `BackupEnvelope` (оболочка файла), `BackupFile` (файл в папке), `RestoreReport` (отчёт), константы формата, имя файла и предел загрузки 20 МБ |
+| `service.py` | `build_backup`, `dumps`, `load`, `restore_backup`, `save_to_disk`, `list_backups`, `read_backup_file` |
+| `routes.py` | `APIRouter(tags=["backup"])`: страница раздела, создание копии, список файлов, скачивание, восстановление |
+| `models.py` | таблиц нет — файл с docstring для единообразия структуры модуля |
+| `__init__.py` | регистрирует разделы при импорте: единственная «точка подключения» в `main.py` |
+
+Контракт раздела — `registry.BackupSection`:
+
+| Поле | Смысл |
+| --- | --- |
+| `key` | ключ раздела в файле копии и в отчёте (`users`, `tasks`, ...) |
+| `title` | подпись раздела для сообщений нотариусу |
+| `order` | место в порядке зависимостей: вставка по возрастанию, очистка по убыванию |
+| `export(db)` | выгрузка plain-данных (даты — ISO-строки), пригодных для `json.dumps` без своих кодировщиков |
+| `import_(db, data)` | восстановление через ORM с сохранением `id`; при несоответствии формы — `BackupValidationError` с русским текстом |
+| `clear(db)` | удаление своих строк перед вставкой; `None` — таблиц у раздела нет |
+| `after_commit` | раздел пишет файлы: `import_` вызывается после commit БД, а сбой попадает в предупреждения |
+
+Порядок разделов (`order`): `users` 10 → `inheritance` 20 → `templates_db` 30 →
+`tasks` 40 → `google_calendar` 50 (файлы, после commit). Раздел, чьи строки
+ссылаются на `users.id`, обязан идти после `users`; очистка таблиц идёт в
+обратном порядке — от «детей» к «родителям».
+
+Формат файла — один JSON: `format` = `notary-portal-backup`, `format_version`
+= 1, `created_at` (UTC без пояса), `app_commit`, `counts` и `sections`. Имя
+файла — `portal-backup-YYYYMMDD-HHMMSS.json` (время сервера; при совпадении
+секунды добавляется `-2`, `-3`…). Папка — `BACKUP_DIR` из настроек
+(`backups/`), создаётся в `lifespan` (`app/main.py`).
+
+Секреты в копии:
+
+- `hashed_password` и `password_plain` попадают в файл только с флагом
+  «Включить открытые пароли». Без него восстановление сохраняет прежние
+  пароли существующих сотрудников, а новых импортирует неактивными и пишет
+  предупреждение в отчёт: пароль им выдаёт нотариус.
+- Ключ и токен Google — только с флагом «Включить ключ и токен Google
+  Календаря» (`google_calendar.export_state()` / `import_state()`). Файлы,
+  которых в копии нет, не удаляются: старая копия не рвёт настроенную связь.
+
+Что важно при правках:
+
+- ядро (`service.py`) не знает конкретных таблиц: всё про данные — в разделах;
+- восстановление всегда «заменить всё» и всегда одной транзакцией: ошибка
+  раздела откатывает БД, файл пользователя на диск не пишется;
+- перед восстановлением портал собирает автобэкап текущего состояния
+  (с паролями и секретами Google), поэтому даже отклонённый файл оставляет
+  свежую копию;
+- имя файла проверяется (`portal-backup-*.json`, без `../` и абсолютных
+  путей), предел загрузки — 20 МБ, в журнал попадают только имена и счётчики.
 
 ## 5. Маршруты
 
@@ -415,7 +483,6 @@ Middleware `tasks_menu_badge` работает на каждый `GET` стра�
 | POST | `/settings/users` | admin | `settings_users_create` | создание сотрудника, `303` на `?created=1` |
 | POST | `/settings/users/{user_id}/update` | admin | `settings_users_update` | смена имени и пароля, `303` на `?updated=1` |
 | POST | `/settings/users/{user_id}/delete` | admin | `settings_users_delete` | удаление, кроме себя, `303` на `?deleted=1` |
-| GET | `/settings/backup` | admin | `settings_backup_page` | `settings/section.html` — заглушка |
 | GET | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_page` | `settings/index.html` + `_inheritance_tariff_panel.html`; `?edit=<id>` — форма правки |
 | POST | `/settings/inheritance-tariff` | admin | `settings_inheritance_tariff_create` | добавление строки, `303` на `?created=1` |
 | POST | `/settings/inheritance-tariff/{tariff_id}/update` | admin | `settings_inheritance_tariff_update` | правка строки, `303` на `?updated=1` |
@@ -427,6 +494,9 @@ Middleware `tasks_menu_badge` работает на каждый `GET` стра�
 | GET | `/settings/google-calendar/connect/status` | admin | `settings_google_calendar_connect_status` | `JSONResponse` — состояние фонового входа |
 | POST | `/settings/google-calendar/disconnect` | admin | `settings_google_calendar_disconnect` | забыть токен, ключ остаётся, `303` на `?disconnected=1` |
 | POST | `/settings/google-calendar/test-event` | admin | `settings_google_calendar_test_event` | создание тестового события; при ошибке `400` с текстом |
+
+Раздел «Резервное копирование» в этом роутере не объявлен: у него свой роутер в
+`app/modules/backup/routes.py`, адреса `/settings/backup*` — см. §5.7.
 
 ### 5.6. Задачи (`app/modules/tasks/routes.py`)
 
@@ -705,6 +775,19 @@ Escape и клик по подложке.
 из атрибута `data-task-checklists` контейнера `[data-task-checklist]`
 (`checklists|tojson|forceescape`) — второй копии списка в JavaScript нет.
 
+### 5.7. Резервное копирование (`app/modules/backup/routes.py`)
+
+`APIRouter(tags=["backup"])`, подключается в `main.py` без префикса: пути
+прописаны целиком. Доступ — только `admin`.
+
+| Метод | Путь | Обработчик | Шаблон / результат |
+| --- | --- | --- | --- |
+| GET | `/settings/backup` | `settings_backup_page` | `settings/index.html` + `_backup_panel.html`; флаги `?created=`, `?restored=`, `?saved=`, `?warn=`, `?error=` |
+| GET | `/settings/backup/files` | `settings_backup_files` | `JSONResponse`: `files[]` с `name`, `size`, `size_label`, `created` |
+| GET | `/settings/backup/download/{name}` | `settings_backup_download` | файл копии как вложение (`Content-Disposition: attachment`); плохое имя — `400` |
+| POST | `/settings/backup/create` | `settings_backup_create` | `build_backup` + `save_to_disk`, `303` на `?created=<имя>`; чекбоксы `include_plain_passwords`, `include_google_credentials` |
+| POST | `/settings/backup/restore` | `settings_backup_restore` | поле `file` (multipart) или `name` (файл из папки), режим `mode=replace`: автобэкап → проверка → замена, `303` на `?restored=<имя>&saved=<автобэкап>` (+`&warn=<n>`); ошибка — `400` с текстом, БД не меняется |
+
 ## 6. Связка «шаблон → JavaScript»
 
 `base.html` подключает `app.js` на всех страницах. Остальные скрипты
@@ -731,8 +814,9 @@ Escape и клик по подложке.
 | `tasks/index.html` | `sync.js`, `tasks.js` |
 | `tasks/_board.html` | нет: партиал столбцов для `index.html` и для фрагмента `/tasks/board`, скрипты подключает страница |
 | `tasks/form.html` | `tasks.js` |
-| `settings/index.html` | `google-calendar.js` — только когда открыт раздел «Связь с Google Календарём» |
+| `settings/index.html` | `google-calendar.js` — только когда открыт раздел «Связь с Google Календарём»; `backup.js?v=1` — только в разделе «Резервное копирование» |
 | `_google_calendar_panel.html` | нет: партиал внутри `settings/index.html`, скрипт подключает страница |
+| `_backup_panel.html` | нет: партиал внутри `settings/index.html` (вместе с окном `#backup-confirm`), `backup.js` подключает страница |
 
 Назначение клиентских файлов:
 
@@ -749,14 +833,15 @@ Escape и клик по подложке.
 | `tasks.js` | доска «Задачи»: перетаскивание с пересортировкой столбца по сроку, окно правки по щелчку на карточке (и по Enter/пробелу), окно создания, удаление из окна правки, чек-лист по типу, подтверждение удаления, обновление чисел метки «Задачи» и значка срока в меню после переноса, подключение доски к `sync.js` |
 | `sync.js` | общий механизм синхронизации раздела: опрос `<раздел>/state`, сравнение версии, подмена разметки фрагментом, пауза при открытом окне и перетаскивании, возврат прокрутки `[data-sync-scroll]`, перезагрузка страницы при истёкшей сессии |
 | `google-calendar.js` | опрос `/settings/google-calendar/connect/status`, ожидание входа в Google, перезагрузка страницы после подключения |
+| `backup.js` | подтверждение восстановления копии своим окном `<dialog id="backup-confirm">` для форм с `data-confirm` (вместо `window.confirm()`) |
 | `app.js` | зарезервирован под общую логику портала |
 
 Версия статики задаётся параметром `?v=`: `base.html` подключает
-`css/styles.css?v=14`, доска `tasks/index.html` — `js/sync.js?v=1` и
-`js/tasks.js?v=15` (он же `?v=15` в формах `tasks`), а все четыре
-шаблона `templates_db` — `js/templates_db.js?v=17`. Номер поднимают при правке
-файла, иначе браузер сотрудника может взять копию из кеша; сейчас версии
-в шаблонах совпадают.
+`css/styles.css?v=15`, доска `tasks/index.html` — `js/sync.js?v=1` и
+`js/tasks.js?v=15` (он же `?v=15` в формах `tasks`), все четыре шаблона
+`templates_db` — `js/templates_db.js?v=17`, раздел «Резервное копирование» —
+`js/backup.js?v=1`. Номер поднимают при правке файла, иначе браузер сотрудника
+может взять копию из кеша; сейчас версии в шаблонах совпадают.
 
 Скрипты калькуляторов используют IIFE, `"use strict"`, ES5-совместимый
 синтаксис и `localStorage`. Ключи хранения имеют префикс `calculators.*`,
@@ -859,6 +944,8 @@ erDiagram
   в обход ORM.
 - Схему создаёт `Base.metadata.create_all` при старте; Alembic-миграции не
   используются. Для существующей SQLite-базы колонки добавляются вручную.
+- Таблиц у модуля `backup` нет: файл копии собирается из таблиц других модулей
+  (см. §4.6), поэтому ER-диаграмма выше от резервного копирования не меняется.
 
 ## 8. Основные сценарии
 
@@ -1082,6 +1169,29 @@ middleware tasks_menu_badge (GET, кроме /static) → request.state.tasks_ba
    и вызвать `window.portalSync.watch({ target, version, stateUrl,
    fragmentUrl, … })`.
 
+### 8.8. Резервная копия: создание и восстановление
+
+```text
+Настройки → Резервное копирование (admin, /settings/backup)
+  → «Создать и сохранить» (POST /settings/backup/create, флаги паролей и Google)
+    → build_backup: registry.ordered_sections() → section.export(db) по порядку
+    → counts и sections → dumps() → backups/portal-backup-YYYYMMDD-HHMMSS.json
+    → 303 ?created=<имя>: файл в таблице, «Скачать» отдаёт его как вложение
+
+  → «Восстановить» (POST /settings/backup/restore: file или name, mode=replace)
+    1. read_backup_file(name) или чтение загрузки в память (предел 20 МБ)
+    2. build_backup со всеми секретами → save_to_disk: автобэкап текущего состояния
+    3. load(): format, format_version <= 1, известные разделы
+    4. restore_backup(): clear по убыванию order → import_ по возрастанию order
+       → один commit; ошибка любого раздела → rollback, база прежняя
+    5. google_calendar (after_commit): файлы ключа и токена — после commit,
+       сбой только в warnings
+    → 303 ?restored=<имя>&saved=<автобэкап> (+&warn=<n>): в сообщении просьба
+      войти заново, если учётная запись была изменена
+
+  → JS backup.js показывает своё окно подтверждения для форм с data-confirm
+```
+
 ## 9. Где что менять
 
 ### Новый калькулятор
@@ -1109,6 +1219,20 @@ middleware tasks_menu_badge (GET, кроме /static) → request.state.tasks_ba
 5. При необходимости добавить пункт меню в `app/templates/base.html` и
    константу `MENU_*` в `core/templating.py` или роутере модуля.
 6. Не добавлять новые зависимости без изменения правил проекта.
+
+### Подключение нового раздела к резервной копии
+
+1. Создать `app/modules/<модуль>/backup.py`: описать `BackupSection`
+   (`key`, `title`, `order`, `export`, `import_`, при необходимости `clear`
+   и `after_commit`) и вызвать `register(...)` при импорте модуля.
+2. Выбрать `order` по зависимостям: раздел, чьи строки ссылаются на `users.id`,
+   обязан идти после `users` (сейчас `users` 10, `inheritance` 20,
+   `templates_db` 30, `tasks` 40, `google_calendar` 50).
+3. Добавить в `app/main.py` один импорт рядом с моделями:
+   `from app.modules import <модуль> as <модуль>_backup  # noqa: F401`.
+4. Ничего не менять в `app/modules/backup/service.py` — ядро о разделе не знает.
+5. Проверить: раздел попал в `counts`, восстановление возвращает его данные,
+   ошибка формы даёт `400` с русским текстом.
 
 ### Подключение внешнего сервиса (пример — Google Календарь)
 
@@ -1174,6 +1298,8 @@ python scripts/create_admin.py --name "Иванов Иван Иванович" -
 | --- | --- |
 | Синтаксис JS | `node --check app/static/js/<файл>.js` |
 | Синтаксис Python | `python -m py_compile <файл>` |
+| Компиляция всего пакета | `python -m compileall -q app` |
+| Компиляция шаблонов | Jinja2 `Environment.get_template()` по всем `app/templates/**/*.html` |
 | Пробелы в diff | `git diff --check` |
 | HTTP и наличие элементов | одноразовый Python-скрипт с cookie `portal_token` |
 | Клиентский расчёт | Node + DOM-заглушка, загрузка реального JS |
@@ -1214,8 +1340,11 @@ python scripts/create_admin.py --name "Иванов Иван Иванович" -
 - **SQLite**: один локальный файл `portal.db`; база работает в режиме WAL
   (включается при старте, `app/main.py::_enable_sqlite_wal`), таймаут ожидания
   блокировки — 15 с (`app/core/database.py`). Рядом появляются `portal.db-wal`
-  и `portal.db-shm` (в `.gitignore`); резервную копию делают при остановленном
-  сервере — после чистой остановки журнал схлопывается в основной файл.
+  и `portal.db-shm` (в `.gitignore`). Копию данных портала снимают в разделе
+  «Резервное копирование» на работающем портале: чтение идёт по живой базе.
+  Копия самого файла SQLite (для переноса на другой компьютер) по-прежнему
+  делается при остановленном сервере — после чистой остановки журнал
+  схлопывается в основной файл.
 - **Синхронизация экранов — опросом, без WebSocket**: `js/sync.js` спрашивает
   состояние раздела каждые 5 секунд, поэтому чужая правка появляется на экране
   с задержкой до 5 с. Пока открыто окно правки или карточку перетаскивают,
@@ -1223,6 +1352,18 @@ python scripts/create_admin.py --name "Иванов Иван Иванович" -
   или окончания перетаскивания. Одновременная правка одной карточки двумя
   сотрудниками разрешается «побеждает сохранивший последним»: блокировки версий
   нет.
+- **Восстановление только «заменить всё»**: частичного восстановления и слияния
+  нет — данные портала становятся ровно такими, как в копии. Перед заменой
+  портал сам сохраняет автобэкап текущего состояния в `backups/`.
+- **Секреты Google по умолчанию не входят в копию**: ключ и токен попадают в
+  файл только по чекбоксу. Копия без секретов не удаляет уже настроенные файлы
+  подключения — об этом пишется предупреждение в отчёт.
+- **Пароли в копии по умолчанию отсутствуют**: без флага «Включить открытые
+  пароли» сотрудники восстанавливаются с прежними паролями, а новые
+  импортируются неактивными — пароль им выдаёт нотариус.
+- **Папка `backups/` вне git**: в файлах лежат данные сотрудников и, возможно,
+  секреты. Каталог создаётся при старте, путь задаётся `BACKUP_DIR` в `.env`;
+  старые копии портал сам не удаляет — чистку делает нотариус.
 
 ## 12. Поддержание карты
 

@@ -1,0 +1,131 @@
+{% from "_macros.html" import status_warn, status_done %}
+{# Раздел «Резервное копирование» в настройках: создание файла JSON, список
+   файлов в папке backups/ и восстановление из файла (режим «заменить всё»).
+   Адрес действий задаёт страница настроек: backup_url = /settings/backup #}
+{% set backup_url = backup_url|default('/settings/backup') %}
+<section class="panel" id="backup-panel">
+  {# Сообщения о результате действий нотариуса: создание и восстановление копии #}
+  {% if message %}
+  {{ status_done(message) }}
+  {% endif %}
+
+  {% if warn_message %}
+  {{ status_warn(warn_message) }}
+  {% endif %}
+
+  {% if error %}
+  {{ status_warn(error) }}
+  {% endif %}
+
+  <div class="panel__head">
+    <h2 class="panel__title">Резервное копирование</h2>
+    <span class="panel__hint">Файл JSON со всеми данными портала</span>
+  </div>
+
+  {# Создание копии: файл кладётся в папку портала, скачать его можно кнопкой
+     в таблице ниже — браузер спросит, куда сохранить #}
+  <form class="calc__form" method="post" action="{{ backup_url }}/create">
+    <div class="field">
+      <label class="checklist__item">
+        <input name="include_plain_passwords" value="1" type="checkbox">
+        <span>Включить открытые пароли пользователей</span>
+      </label>
+    </div>
+
+    <div class="field">
+      <label class="checklist__item">
+        <input name="include_google_credentials" value="1" type="checkbox">
+        <span>Включить ключ и токен Google Календаря</span>
+      </label>
+    </div>
+
+    <p class="note">
+      Ключ и токен дают доступ к календарю аккаунта — файл с ними храните как
+      секрет: не отправляйте его в мессенджерах и не кладите в общие папки.
+    </p>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Создать и сохранить</button>
+      <span class="panel__hint">Папка: <code>{{ backup_dir_absolute }}</code></span>
+    </div>
+  </form>
+</section>
+
+<section class="panel" id="backup-files">
+  <div class="panel__head">
+    <h2 class="panel__title">Файлы в папке</h2>
+    <span class="panel__hint">Всего: {{ backup_files|length }}</span>
+  </div>
+
+  {% if backup_files %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Файл</th>
+          <th>Размер</th>
+          <th>Создан</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in backup_files %}
+        <tr>
+          <td class="mono">{{ item.name }}</td>
+          <td>{{ item.size_label }}</td>
+          <td>{{ item.created_label }}</td>
+          <td>
+            <div class="backup__actions">
+              <a class="btn btn--ghost" href="{{ backup_url }}/download/{{ item.name }}" download>Скачать</a>
+              <form method="post" action="{{ backup_url }}/restore"
+                    data-confirm="Восстановление заменит все данные портала. Текущее состояние будет сохранено в backups. Продолжить?">
+                <input type="hidden" name="name" value="{{ item.name }}">
+                <button class="btn btn--ghost btn--danger" type="submit">Восстановить</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="panel__hint">Файлов пока нет — создайте первую копию в блоке выше.</p>
+  {% endif %}
+</section>
+
+<section class="panel" id="backup-restore">
+  <div class="panel__head">
+    <h2 class="panel__title">Восстановить из файла</h2>
+    <span class="panel__hint">Режим «Заменить всё»: данные станут такими, как в копии</span>
+  </div>
+
+  {# Загрузка копии с компьютера: перед заменой портал сам сохраняет текущее
+     состояние в папку backups/, поэтому откат возможен даже после ошибки #}
+  <form class="calc__form" method="post" action="{{ backup_url }}/restore"
+        enctype="multipart/form-data"
+        data-confirm="Восстановление заменит все данные портала. Текущее состояние будет сохранено в backups. Продолжить?">
+    <div class="field">
+      <label for="backup_file">Файл резервной копии portal-backup-*.json</label>
+      <input id="backup_file" name="file" type="file" accept=".json,application/json">
+    </div>
+    <input type="hidden" name="mode" value="replace">
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Восстановить</button>
+      <span class="panel__hint">Перед заменой портал сохранит копию текущего состояния</span>
+    </div>
+  </form>
+</section>
+
+{# Окно подтверждения — своё, а не window.confirm(): у браузерного окна сверху
+   печатается служебная строка «Подтвердите действие на сайте 127.0.0.1».
+   Показывает его js/backup.js для форм с data-confirm. #}
+<dialog class="modal modal--confirm" id="backup-confirm" aria-label="Подтверждение восстановления">
+  <p class="card__title" data-backup-confirm-text></p>
+  <div class="calc__row">
+    {# Первой в фокусе «Отмена»: восстановление не начнётся по случайному Enter #}
+    <button class="btn btn--ghost" type="button" data-backup-confirm-cancel>Отмена</button>
+    <button class="btn btn--ghost btn--danger" type="button" data-backup-confirm-accept>Восстановить</button>
+  </div>
+</dialog>

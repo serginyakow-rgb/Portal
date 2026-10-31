@@ -16,7 +16,7 @@
 <div class="layout">
   <aside class="sidebar sidebar--light">
     <nav class="menu">
-      {% if user.role == 'admin' %}
+      {% if user and user.role == 'admin' %}
       <form method="get" action="/settings/users">
         <button class="menu__item {% if settings_section == 'users' %}is-active{% endif %}" type="submit" title="Сотрудники и доступы">
           {{ icon_users(20) }}
@@ -26,7 +26,7 @@
       {% endif %}
 
       <form method="get" action="/settings/backup">
-        <button class="menu__item" type="submit" title="Резервная копия базы данных">
+        <button class="menu__item {% if settings_section == 'backup' %}is-active{% endif %}" type="submit" title="Резервная копия базы данных">
           {{ icon_archive(20) }}
           <span class="menu__text">Резервное копирование</span>
         </button>
@@ -51,6 +51,8 @@
   <div>
     {% if settings_section == 'users' %}
     {% include "_users_panel.html" %}
+    {% elif settings_section == 'backup' %}
+    {% include "_backup_panel.html" %}
     {% elif settings_section == 'inheritance_tariff' %}
     {% include "_inheritance_tariff_panel.html" %}
     {% elif settings_section == 'google_calendar' %}
@@ -68,5 +70,9 @@
 {# Опрос состояния входа в Google: нужен только разделу «Связь с Google Календарём» #}
 {% if settings_section == 'google_calendar' %}
 <script src="{{ url_for('static', path='js/google-calendar.js') }}"></script>
+{% endif %}
+{# Подтверждение восстановления копии: своё окно вместо window.confirm() #}
+{% if settings_section == 'backup' %}
+<script src="{{ url_for('static', path='js/backup.js') }}?v=1"></script>
 {% endif %}
 {% endblock %}

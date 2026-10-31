@@ -70,6 +70,19 @@ SQLite `portal.db` в корне (в `.gitignore`). Схему создаёт
 (`C:\Users\azaza\AppData\Local\Temp\`), которые не попадают в репозиторий:
 
 - **Синтаксис JS**: `node --check app/static/js/<файл>.js`.
+- **Синтаксис Python**: `python -m compileall -q app` — проверяет весь пакет
+  разом (`py_compile` — для одного файла).
+- **Шаблоны Jinja**: `Environment(loader=FileSystemLoader("app/templates"))`
+  и `get_template()` по всем `*.html` — ловит синтаксис партиалов, которые
+  не открываются напрямую.
+- **Раздел «Резервное копирование»**: временный `uvicorn` на `:8011`,
+  запущенный из временного каталога: в нём `app/static` и `app/templates` —
+  junction-ссылки на проект (`cmd /c mklink /J`), `config/` пустой, база —
+  копия `portal.db`, `BACKUP_DIR` — временная папка. Настоящие `portal.db`,
+  `config/google_calendar/` и `backups/` при такой проверке не затрагиваются.
+  Раздел Google отдельно проверяется скриптом с подменой
+  `gcal.CONFIG_DIR`/`CREDENTIALS_PATH`/`TOKEN_PATH`/`ACCOUNT_PATH` на
+  временные файлы.
 - **Клиентский расчёт**: Node-скрипт с DOM-заглушкой, подгружающий реальный
   `app/static/js/<файл>.js` через `vm`/`require` после подстановки
   `document`/`localStorage`; сценарий «ввёл значение → нажал `input` →

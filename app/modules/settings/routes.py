@@ -352,18 +352,6 @@ async def settings_users_delete(
     return RedirectResponse("/settings/users?deleted=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.get("/settings/backup", response_class=HTMLResponse, response_model=None)
-async def settings_backup_page(request: Request, user: AdminUser) -> HTMLResponse:
-    """Заглушка раздела «Резервное копирование»: функционал появится позже."""
-    return render(
-        request,
-        "settings/section.html",
-        user=user,
-        active_menu=MENU_SETTINGS,
-        section_title="Резервное копирование",
-    )
-
-
 @router.get("/settings/inheritance-tariff", response_class=HTMLResponse, response_model=None)
 async def settings_inheritance_tariff_page(
     request: Request,

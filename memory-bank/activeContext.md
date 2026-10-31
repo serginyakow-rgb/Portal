@@ -1,6 +1,11 @@
 # Активный контекст
 
-_Актуализировано 31.10.2026: в окне подтверждения удаления карточки раздела
+_Актуализировано 31.10.2026: в «Настройках» появился раздел «Резервное
+копирование» — файл JSON со всеми данными портала, скачивание и восстановление
+в режиме «заменить всё»; разделы копии подключаются реестром, поэтому новый
+модуль добавляет свой раздел одной записью. `styles.css?v=15`,
+`js/backup.js?v=1` — см. «Текущая задача» ниже._
+_Ранее 31.10.2026: в окне подтверждения удаления карточки раздела
 «База данных» кнопка «Удалить» оформлена как «Удалить карточку» в «Задачах»
 (`btn btn--ghost btn--danger`), `templates_db.js` поднят до `?v=16` — см.
 «Текущая задача» ниже._
@@ -44,6 +49,51 @@ _Актуализировано 28.10.2026 после правки меню «З
 строки 24–26, `CLOSE_DIVISOR` — 29, `federalBase` — 151, `federalTariff` — 161,
 вызов — 221; старых `CLOSE_COEFFICIENT`/`OTHER_COEFFICIENT` и функции
 `coefficient` в файле нет; файл 293 CRLF, одиночных LF и BOM нет._
+
+## Текущая задача (завершена, 31.10.2026): раздел «Резервное копирование»
+
+Просьба: в «Настройках» нужен раздел «Резервное копирование» — создать копию
+всех данных портала, скачать файл, восстановить из файла; архитектура должна
+позволять новому модулю подключать свой раздел к копии одной записью.
+
+- Новый модуль `app/modules/backup/`: `registry.py` (контракт `BackupSection`,
+  реестр, флаги выгрузки через `ContextVar`, накопитель предупреждений),
+  `sections.py` (пять разделов: `users`, `inheritance`, `templates_db`,
+  `tasks`, `google_calendar`), `schemas.py` (`BackupEnvelope`, `BackupFile`,
+  `RestoreReport`), `service.py` (`build_backup`, `dumps`, `load`,
+  `restore_backup`, `save_to_disk`, `list_backups`, `read_backup_file`),
+  `routes.py` (пять маршрутов `/settings/backup*`), `models.py` — таблиц нет.
+- Формат — один JSON `portal-backup-YYYYMMDD-HHMMSS.json` (`format` =
+  `notary-portal-backup`, `format_version` = 1, `created_at` в UTC, `counts`,
+  `sections`). Папка — `BACKUP_DIR` (`backups/`) из `Settings`, создаётся в
+  `lifespan`; в `.gitignore` добавлено `backups/`.
+- Пароли: `hashed_password` и `password_plain` — только по чекбоксу «Включить
+  открытые пароли»; без него восстановление сохраняет прежние пароли
+  существующих сотрудников, а новых импортирует неактивными и пишет
+  предупреждение в отчёт.
+- Google: `service.export_state(include_credentials=…)` и
+  `import_state(data, include_credentials)`; содержимое файлов — base64 по
+  чекбоксу; файлы, которых в копии нет, не удаляются (предупреждение в отчёт).
+- Восстановление — только «заменить всё»: `clear` по убыванию `order`,
+  `import_` по возрастанию, один commit; ошибка откатывает БД. Автобэкап
+  текущего состояния (со всеми секретами) делается до разбора файла, поэтому
+  даже отклонённая копия оставляет свежий снимок данных.
+- Шаблоны: партиал `_backup_panel.html` (создание, таблица файлов,
+  восстановление, окно `#backup-confirm`), ветка `section == 'backup'` и
+  пункт меню с `is-active` в `settings/index.html`, скрипт `js/backup.js?v=1`.
+  Стили — только scoped-добавление в `app/static/css/styles.css`
+  (`#backup-panel .note`, `#backup-files .backup__actions`), `styles.css?v=15`.
+- Удалена заглушка `settings/section.html` и её маршрут в `settings/routes.py`.
+- Проверки: `python -m compileall -q app` — чисто; `node --check
+  app/static/js/backup.js` — чисто; Jinja разбирает 32 шаблона; временный
+  uvicorn `:8011` на копии `portal.db` — 23/23 HTTP-проверки (доступ,
+  создание, `counts`, восстановление с автобэкапом, `400` на битый JSON,
+  чужой формат, версию 99, traversal, пустой файл, скачивание, права
+  сотрудника, JSON-список, неизвестный раздел, битую строку); раздел Google
+  на временных файлах — 8/8. Отчёты: `%TEMP%\portal_backup_report.txt`,
+  `%TEMP%\gcal_backup_report.txt`.
+- Не закоммичено: всё перечисленное лежит в рабочем дереве — решение о коммите
+  за пользователем (правило проекта).
 
 ## Текущая задача (завершена, 31.10.2026): в «Базе данных» закрытое окно подтверждения висело блоком внизу страницы
 
@@ -1334,6 +1384,13 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
 
 ## Состояние репозитория
 
+- В рабочем дереве — незакоммиченный раздел «Резервное копирование»:
+  новый `app/modules/backup/`, `app/templates/_backup_panel.html`,
+  `app/static/js/backup.js`, удалённый `app/templates/settings/section.html`,
+  правки `main.py`, `core/config.py`, `google_calendar/service.py`,
+  `settings/routes.py`, `settings/index.html`, `base.html`, `static/css/styles.css`,
+  `.env.example`, `.gitignore`, `README.md`, `PROJECT_MAP.md`, `memory-bank/`.
+  Ниже — состояние до этой задачи.
 - HEAD — `8933c62` («Документация: синхронизация «Задач» и окно подтверждения
   «Базы данных»»), `main` совпадает с `origin/main`
   (`git ls-remote origin main` → `8933c62`), неотправленных коммитов нет.
@@ -1371,7 +1428,8 @@ round(региональный)`, тогда как `clinerules/02-calculators.m
   (`https://github.com/serginyakow-rgb/Portal.git`, сверять
   `git ls-remote origin main`); force-push не использовался, история линейная.
 - В `.gitignore` — `venv/`, `.env`, `*.db`, `*.log`, `*.err`, `__pycache__/`,
-  `client_secret_*.json`, `config/google_calendar/`, `app/static/_probe.html`.
+  `client_secret_*.json`, `config/google_calendar/`, `app/static/_probe.html`,
+  `backups/` (с 31.10.2026).
   В индексе 104 файла; ключ OAuth-клиента, токен, `.env` и `portal.db` не
   отслеживаются (проверено `git ls-files`).
 - Отправка идёт через Git Credential Manager (`credential.helper=manager`),

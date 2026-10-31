@@ -807,4 +807,45 @@
       send();
     }
   });
+
+  /* ── Синхронизация доски между сотрудниками ────────────────────────────── */
+
+  // Адреса опроса: состояние доски (JSON с версией и числами) и её столбцы
+  // фрагментом. Сам механизм общий — app/static/js/sync.js; здесь только
+  // настройки раздела «Задачи»
+  var BOARD_STATE_URL = "/tasks/state";
+  var BOARD_FRAGMENT_URL = "/tasks/board";
+
+  // Доска есть только на странице раздела: на /tasks/form и /tasks/trash
+  // скрипт тоже подключён, но опрашивать там нечего
+  if (board && window.portalSync) {
+    // Фильтры, с которыми сервер собрал эту доску: шаблон вывел их
+    // в data-board-assignee и data-board-query. Пустое значение — «Все
+    // сотрудники», поэтому адрес фрагмента повторяет доску один в один
+    var boardFilters =
+      "?assignee=" + encodeURIComponent(board.getAttribute("data-board-assignee") || "") +
+      "&q=" + encodeURIComponent(board.getAttribute("data-board-query") || "");
+
+    window.portalSync.watch({
+      target: board,
+      // Версию показанной разметки вывел сервер (data-board-version): с ней
+      // сравнивается версия из /tasks/state
+      version: board.getAttribute("data-board-version") || "",
+      versionAttribute: "data-board-version",
+      stateUrl: BOARD_STATE_URL,
+      fragmentUrl: BOARD_FRAGMENT_URL + boardFilters,
+      // Пока карточку тащат, подменять столбцы нельзя: перетаскивание потеряет
+      // свою цель. Опрос подождёт следующего тика
+      isBusy: function () {
+        return draggedCard !== null;
+      },
+      // Числа метки «Задачи» и окна «Задачи по сотрудникам» переписываются на
+      // каждом опросе, даже если доска не менялась: они считаются по всей
+      // доске, а не только по карточкам текущего фильтра
+      onState: function (state) {
+        applyMenuBadge(state);
+        applyAssignees(state);
+      }
+    });
+  }
 })();

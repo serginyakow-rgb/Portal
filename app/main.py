@@ -1,4 +1,5 @@
 """Точка входа: сборка FastAPI, статика, шаблоны, метка меню и обработчики ошибок."""
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
@@ -7,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import async_session_maker, engine
 from app.core.templating import MENU_PANEL, render
@@ -24,9 +26,34 @@ from app.modules.tasks.service import count_menu_badge
 from app.modules.templates_db.routes import router as templates_db_router
 
 
+logger = logging.getLogger(__name__)
+
+
+async def _enable_sqlite_wal() -> None:
+    """Переводит SQLite-базу в режим WAL; для других СУБД ничего не делает.
+
+    Синхронизация разделов добавляет постоянные чтения (экраны сотрудников
+    опрашивают сервер каждые несколько секунд), а в журнале по умолчанию
+    чтения ждут каждую запись. WAL позволяет читать во время записи; прагма
+    хранится в самом файле базы, поэтому её достаточно выставить при старте.
+    Внутри транзакции журнал не переключается — запрос идёт в режиме
+    AUTOCOMMIT. Сбой (например, файл открыт только на чтение) запуску
+    не мешает: остаётся прежний журнал, портал работает как раньше.
+    """
+    async with engine.connect() as conn:
+        if conn.dialect.name != "sqlite":
+            return
+        autocommit = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        try:
+            await autocommit.exec_driver_sql("PRAGMA journal_mode=WAL")
+        except SQLAlchemyError as exc:
+            logger.warning("Режим WAL для SQLite не включён: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Создаёт таблицы БД при старте и освобождает движок при остановке."""
+    await _enable_sqlite_wal()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield

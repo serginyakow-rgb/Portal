@@ -5,12 +5,14 @@
 для фильтра роуты получают из auth.service.
 """
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
+from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.tasks.models import Task
+from app.core.sync import revision
+from app.modules.tasks.models import Task, now_utc
 from app.modules.tasks.schemas import (
     CARD_TYPE_LABELS,
     DEFAULT_STATUS,
@@ -23,9 +25,7 @@ from app.modules.tasks.schemas import (
 )
 
 
-def _now() -> datetime:
-    """Текущее время UTC без пояса — в том же виде, что CURRENT_TIMESTAMP в БД."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 
 # Сколько рабочих дней (пн–пт) может остаться до срока, чтобы он считался
@@ -370,6 +370,37 @@ async def count_menu_badge(db: AsyncSession, user_id: int) -> TasksMenuBadge:
     return TasksMenuBadge(unassigned=row[0], mine=row[1], due_soon=row[2])
 
 
+async def board_version(db: AsyncSession, employees: list[Any]) -> str:
+    """Версия доски: отпечаток данных, из которых собраны карточки.
+
+    По версии экраны сотрудников узнают, что доска изменилась, и забирают
+    свежие столбцы у ``GET /tasks/board`` (механизм — ``app/core/sync.py``,
+    ``revision``). В отпечаток входит всё, что попадает в разметку доски:
+
+    * число карточек, включая корзину — окончательное удаление его уменьшает,
+      восстановление увеличивает;
+    * самый большой ``id`` — иначе удаление последней карточки могло бы дать
+      отпечаток, совпадающий с прежним;
+    * последний ``updated_at`` — правка полей, перенос по доске, корзина
+      и восстановление (``models.now_utc`` пишет время с микросекундами,
+      поэтому две правки внутри одной секунды дают разные метки);
+    * сотрудники — имя видно в карточке («Без исполнителя» или имя), цвет
+      метки заливает полосу прогресса, оба есть в фильтре «Исполнитель».
+
+    ``employees`` — список из ``auth.service.list_users``: модель User модуль
+    «Задачи» не импортирует (см. шапку файла), поэтому список приходит готовым.
+    """
+    count, max_id, updated = (
+        await db.execute(
+            select(func.count(Task.id), func.max(Task.id), func.max(Task.updated_at))
+        )
+    ).one()
+    stamps: list[object] = [count, max_id or 0, "" if updated is None else str(updated)]
+    for employee in employees:
+        stamps.extend((employee.id, employee.full_name, employee.marker_color))
+    return revision(*stamps)
+
+
 async def get_task(db: AsyncSession, task_id: int) -> Task | None:
     """Карточка по идентификатору — вместе с исполнителем и автором.
 
@@ -506,7 +537,7 @@ async def move_task(
 
 async def archive_task(db: AsyncSession, task: Task) -> Task:
     """Убирает карточку в корзину: строка остаётся в БД с временем удаления."""
-    task.deleted_at = _now()
+    task.deleted_at = now_utc()
     await db.commit()
     await db.refresh(task)
     return task

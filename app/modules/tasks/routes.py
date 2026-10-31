@@ -8,19 +8,21 @@ from datetime import date
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
-from app.core.templating import render
+from app.core.sync import mark_fragment
+from app.core.templating import render, render_partial
 from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
 from app.modules.auth.service import list_users
 from app.modules.google_calendar import service as google_calendar
 from app.modules.tasks.schemas import (
+    BoardState,
     CARD_TYPE_CHECKLISTS,
     CARD_TYPE_LABELS,
     DEFAULT_CARD_TYPE,
@@ -36,6 +38,7 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.service import (
     archive_task,
+    board_version,
     count_menu_badge,
     count_tasks_by_assignee,
     count_trash,
@@ -130,6 +133,9 @@ async def _render_board(
     # Неизвестный фильтр (сотрудника удалили) сбрасываем: доска показывается целиком
     if assignee_id is not None and all(employee.id != assignee_id for employee in users):
         assignee_id = None
+    # Версия доски — до выборки карточек: страница показывает ровно то
+    # состояние, отпечаток которого попал в data-board-version (см. task_board)
+    version = await board_version(db, users)
     tasks = await list_board(db, assignee_id=assignee_id, query=query)
     # Сколько задач закреплено за каждым сотрудником — для окна по шестерёнке.
     # Окно есть только у роли «Нотариус» (admin), поэтому и запрос нужен лишь ей.
@@ -140,6 +146,7 @@ async def _render_board(
         user=user,
         active_menu=MENU_TASKS,
         columns=group_by_status(tasks),
+        version=version,
         status_labels=STATUS_LABELS,
         status_order=STATUS_ORDER,
         status_classes=STATUS_CLASSES,
@@ -283,6 +290,95 @@ async def index_page(
         deleted=deleted,
         gcal=gcal,
         moved=moved,
+    )
+
+
+@router.get("/state", response_model=BoardState)
+async def task_state(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    response: Response,
+) -> BoardState:
+    """Состояние доски для синхронизации экранов сотрудников (js/sync.js).
+
+    Скрипт спрашивает адрес каждые несколько секунд и сравнивает ``version``
+    с той, что показывает страница. Разошлись — он забирает столбцы у
+    ``GET /tasks/board``; совпали — обновляет только числа метки «Задачи»
+    и окна «Задачи по сотрудникам»: они зависят и от карточек вне текущего
+    фильтра (чужие карточки, «Готово»), поэтому обновляются на каждом опросе.
+    Фильтры доски на версию не влияют — отпечаток общий для всей доски
+    (service.board_version).
+
+    Числа метки уже посчитала middleware tasks_menu_badge (она выполняется
+    на каждый GET и кладёт их в request.state.tasks_badge), поэтому второго
+    запроса нет — только запасной расчёт, если middleware не выполнялась.
+    Числа окна по сотрудникам нужны одной роли «Нотариус» — как и на доске
+    (count_tasks_by_assignee вызывается только для admin).
+
+    Доступ — только вошедшему сотруднику: истёкшая сессия даёт 401 → 303
+    на страницу входа, а js/sync.js на редирект отвечает перезагрузкой
+    страницы, а не вставкой формы входа в доску.
+    """
+    users = await list_users(db)
+    badge = getattr(request.state, "tasks_badge", None) or await count_menu_badge(db, user.id)
+    # Ответ не кешируется: версия должна быть свежей на каждый опрос
+    response.headers["Cache-Control"] = "no-store"
+    return BoardState(
+        version=await board_version(db, users),
+        menu_unassigned=badge.unassigned,
+        menu_mine=badge.mine,
+        menu_due_soon=badge.due_soon,
+        assignee_counts=await count_tasks_by_assignee(db) if user.role == "admin" else {},
+    )
+
+
+@router.get("/board", response_class=HTMLResponse, response_model=None)
+async def task_board(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    assignee: str | None = None,
+    q: str = "",
+) -> Response:
+    """Столбцы доски фрагментом: js/sync.js подменяет ими доску без перезагрузки.
+
+    Разметка одна с доской — столбцы лежат в ``tasks/_board.html``, его же
+    подключает ``tasks/index.html``. Ответ несёт заголовок ``X-Section-Version``
+    (``core.sync.VERSION_HEADER``) — версию ровно этой разметки: клиент
+    запоминает её и сверяет со следующим опросом ``GET /tasks/state``.
+
+    Фильтры приходят из data-атрибутов доски (``data-board-assignee``,
+    ``data-board-query``), поэтому «текущего сотрудника» сервер здесь
+    не подставляет: пустой ``assignee`` — «Все сотрудники», как явный пустой
+    параметр в адресе страницы. Неизвестный сотрудник (его удалили) сбрасывает
+    фильтр — так же поступает _render_board.
+
+    Версия считается до выборки карточек: иначе между отпечатком и разметкой
+    могла бы встать чужая правка, и клиент запомнил бы версию новее той
+    разметки, которую получил, — изменение потерялось бы до следующего.
+
+    Параметр user — зависимость авторизации: фрагмент отдаётся только
+    вошедшему сотруднику.
+    """
+    users = await list_users(db)
+    assignee_id = _filter_assignee(assignee)
+    if assignee_id is not None and all(employee.id != assignee_id for employee in users):
+        assignee_id = None
+    version = await board_version(db, users)
+    tasks = await list_board(db, assignee_id=assignee_id, query=q)
+    return mark_fragment(
+        render_partial(
+            request,
+            "tasks/_board.html",
+            columns=group_by_status(tasks),
+            status_labels=STATUS_LABELS,
+            status_order=STATUS_ORDER,
+            status_classes=STATUS_CLASSES,
+            today=date.today(),
+            board_filters=_board_filters(assignee_id, q),
+        ),
+        version,
     )
 
 

@@ -81,98 +81,14 @@
    В каждом столбце карточки идут по возрастанию срока (list_board): без срока —
    в конце, при одинаковых сроках — в порядке ручной позиции. При переносе
    карточки в другой столбец он пересортировывается по сроку (move_task и
-   js/tasks.js: срок карточки лежит в data-task-due как ГГГГ-ММ-ДД). #}
-<div class="board" data-board>
-  {% for status_key in status_order %}
-  <section class="board__column {{ status_classes[status_key] }}" data-board-column data-status="{{ status_key }}">
-    <div class="board__head kb-column__head">
-      <h2 class="board__title">{{ status_labels[status_key] }}</h2>
-      <span class="board__count kb-column__count">{{ columns[status_key]|length }}</span>
-    </div>
-
-    <div class="board__cards" data-board-cards>
-      {% for task in columns[status_key] %}
-      {# Значения полей этой карточки для окна правки: одно окно на всю доску,
-         js/tasks.js разбирает JSON из атрибута data-task и заполняет им поля #}
-      {% set edit_payload = {
-           "title": task.title,
-           "contact": task.contact or "",
-           "due_date": task.due_date.isoformat() if task.due_date else "",
-           "description": task.description or "",
-           "assignee_id": task.assignee_id,
-           "card_type": task.card_type,
-           "checklist": task.checklist
-         } %}
-      {# Карточка открывает окно «Редактирование карточки» щелчком мыши:
-         data-task-edit ловит js/tasks.js, data-task-form и data-task-delete-url —
-         адреса сохранения и удаления для окна, data-task — значения полей.
-         role/tabindex нужны, чтобы карточку можно было открыть с клавиатуры
-         (Enter или пробел), aria-haspopup — что откроется окно.
-         Перетаскивание прежнее: карточка по-прежнему draggable. #}
-      <article class="card card--task board__card" draggable="true"
-               data-task-id="{{ task.id }}" data-task-status="{{ task.status }}"
-               data-task-position="{{ task.position }}"
-               data-task-due="{{ task.due_date.isoformat() if task.due_date else '' }}"
-               data-task-edit
-               data-task-form="/tasks/update/{{ task.id }}?{{ board_filters }}"
-               data-task-delete-url="/tasks/delete/{{ task.id }}"
-               data-task="{{ edit_payload|tojson|forceescape }}"
-               role="button" tabindex="0" aria-haspopup="dialog">
-        <div class="card__title">{{ task.title }}</div>
-        {# Строка «Исполнитель | Срок». Контакт на доске не выводится — он остаётся
-           полем карточки (форма правки и модальное окно). Срок показывается
-           всегда; «не задан» — когда дата в карточке пустая. Если до срока
-           осталось меньше двух рабочих дней (пн–пт, выходные не считаются)
-           или срок уже прошёл, срок выделяется жирным красным текстом
-           и получает значок; due_soon считает service.working_days_left.
-           В столбце «Готово» выделение снимается стилями (см. styles.css):
-           работа закрыта, предупреждение о близком сроке там не нужно. #}
-        {% set days_left = (task.due_date - today).days if task.due_date else none %}
-        {% set due_soon = task.due_soon %}
-        <p class="card__meta card__row">
-          {# data-task-assignee: сюда js/tasks.js пишет исполнителя из ответа
-             /tasks/move/{id} — если поле было пустым, после переноса
-             из «На очереди» это авторизованный сотрудник, имя меняется
-             без перезагрузки; там же скрипт правит assignee_id в data-task,
-             иначе окно правки показало бы «Не выбран» #}
-          <span data-task-assignee>{{ task.assignee_name or "Без исполнителя" }}</span>
-          <span class="card__bar" aria-hidden="true">|</span>
-          <span class="card__due{% if due_soon %} card__due--soon{% endif %}">Срок: {{ task.due_date.strftime("%d.%m.%Y") if task.due_date else "не задан" }}{% if due_soon %} {{ icon_due_alert(14, "Срок просрочен" if days_left < 0 else "Срок истекает") }}{% endif %}</span>
-        </p>
-
-        {# Полоса прогресса: серая дорожка 10px со скруглением 5px, заливка —
-           слева направо, её ширина равна прогрессу карточки в процентах,
-           цвет — marker_color исполнителя. Ширина и цвет заданы атрибутами
-           SVG (width, fill), а не style: inline-стили в шаблонах запрещены.
-           Цифры не выводятся — прогресс виден только по длине заливки.
-           Значение считает service.task_progress (0–100): столбец, исполнитель
-           и отмеченные пункты чек-листа. При переносе по доске то же значение
-           приходит в TaskMoveResult.progress и заливку обновляет js/tasks.js #}
-        <svg class="card__progress" aria-hidden="true" focusable="false">
-          <rect class="card__progress-track" width="100%" height="100%" rx="5"></rect>
-          <rect class="card__progress-fill" width="{{ task.progress }}%" height="100%" rx="5" fill="{{ task.assignee_color or 'none' }}"></rect>
-        </svg>
-
-        {# Кнопок «Редактировать» и «Удалить» на карточке больше нет: правка
-           открывается щелчком по карточке, удаление — из окна правки.
-           Без скрипта щелчок окно не открывает, поэтому здесь же лежит обычная
-           ссылка на страницу правки — при включённом JS браузер её не создаёт #}
-        <noscript>
-          <div class="card__foot">
-            <div class="calc__row">
-              <a class="btn btn--ghost" href="/tasks/update/{{ task.id }}?{{ board_filters }}"
-                 title="Редактировать карточку">{{ icon_edit() }}</a>
-            </div>
-          </div>
-        </noscript>
-      </article>
-      {% endfor %}
-      {# Подсказка есть в каждом столбце и скрыта, пока в нём есть карточки;
-         так js/tasks.js может показать её после переноса последней карточки #}
-      <p class="panel__hint" data-board-empty{% if columns[status_key] %} hidden{% endif %}>Карточек нет</p>
-    </div>
-  </section>
-  {% endfor %}
+   js/tasks.js: срок карточки лежит в data-task-due как ГГГГ-ММ-ДД).
+   Сама разметка столбцов и карточек — в партиале tasks/_board.html: его же
+   отдаёт фрагмент GET /tasks/board для js/sync.js. #}
+<div class="board" data-board
+     data-board-version="{{ version }}"
+     data-board-assignee="{{ assignee_id or '' }}"
+     data-board-query="{{ query }}">
+  {% include "tasks/_board.html" %}
 </div>
 {# Модальное окно создания: поля — те же части, что и на странице правки,
    и в окне «Редактирование карточки» ниже.
@@ -296,5 +212,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=14"></script>
+<script src="{{ url_for('static', path='js/sync.js') }}?v=1"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=15"></script>
 {% endblock %}

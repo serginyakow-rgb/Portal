@@ -4,12 +4,23 @@
 ключи заданы строкой «users.id», а связи assignee и author разрешаются по
 имени класса User, зарегистрированному в общем Base из app.db.base.
 """
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+
+def now_utc() -> datetime:
+    """Текущее время UTC без пояса — в том же виде, что CURRENT_TIMESTAMP в БД.
+
+    Время пишет Python, а не только ``server_default``: ``CURRENT_TIMESTAMP``
+    в SQLite хранит секунды, и две правки внутри одной секунды давали один
+    и тот же ``updated_at``. По ``updated_at`` считается версия доски
+    (``service.board_version``), поэтому нужна микросекундная точность.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Task(Base):
@@ -46,7 +57,8 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         server_default=func.now(),
-        onupdate=func.now(),
+        default=now_utc,
+        onupdate=now_utc,
         nullable=False,
     )
     # Корзина: время удаления; пока NULL — карточка на доске

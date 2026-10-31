@@ -4,6 +4,8 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.core.sync import SectionState
+
 # Границы длины полей
 MAX_TITLE = 200
 MAX_CONTACT = 200
@@ -305,4 +307,28 @@ class TaskListItem(BaseModel):
     # Чек-лист типа карточки: {пункт: отмечен} — для предзаполнения окна правки
     checklist: dict[str, bool] = {}
     deleted_at: datetime | None = None  # заполняется только у карточек корзины
+
+
+class BoardState(SectionState):
+    """Ответ «состояние доски» для синхронизации экранов сотрудников.
+
+    ``version`` — отпечаток доски из ``service.board_version``: его сравнивает
+    ``js/sync.js`` и при расхождении забирает свежие столбцы у
+    ``GET /tasks/board``. Остальные поля обновляются на каждом опросе, даже
+    если доска не менялась: они зависят и от карточек вне текущего фильтра.
+
+    Имена ``menu_*`` и ``assignee_counts`` совпадают с полями
+    ``TaskMoveResult``: их разбирают те же ``applyMenuBadge`` и
+    ``applyAssignees`` в ``js/tasks.js``, поэтому у опроса и перетаскивания
+    одна перерисовка метки «Задачи» и окна «Задачи по сотрудникам».
+    """
+
+    # Числа метки «Задачи»: ничьи карточки и карточки сотрудника в работе
+    menu_unassigned: int = 0
+    menu_mine: int = 0
+    # Срочные карточки сотрудника: по числу показывается или прячется значок
+    menu_due_soon: int = 0
+    # Числа окна «Задачи по сотрудникам»: {id сотрудника: карточек в работе}.
+    # Окно есть только у роли «Нотариус» (admin), остальным словарь пустой
+    assignee_counts: dict[int, int] = {}
 

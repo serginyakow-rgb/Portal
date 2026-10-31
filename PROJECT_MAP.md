@@ -79,7 +79,9 @@ flowchart LR
   `templates_db` — `/templates-db`.
 - Все страницы рендерятся через `render()` из `app/core/templating.py`, который
   добавляет `user`, `initials`, `role_label`, `role_labels`, `active_menu`,
-  `tasks_badge`.
+  `tasks_badge`. Фрагменты для JavaScript (например, порция карточек
+  «Базы данных») рендерит `render_partial()` из того же файла — без шапки,
+  меню и общего контекста.
 - Метку «Задачи» в меню (числа «ничьи | мои в работе» и число срочных карточек
   сотрудника) считает HTTP-middleware `tasks_menu_badge` в `app/main.py`: кладёт
   `request.state.tasks_badge`, `render()` переносит его в шаблон.
@@ -100,7 +102,7 @@ Portal/
 │   │   ├── config.py            Settings из .env (pydantic-settings)
 │   │   ├── database.py          async engine, sessionmaker, get_db()
 │   │   ├── security.py          bcrypt, JWT, cookie portal_token
-│   │   └── templating.py        render(), initials(), ROLE_LABELS, MENU_PANEL/USERS/PROFILE
+│   │   └── templating.py        render(), render_partial(), initials(), ROLE_LABELS, MENU_PANEL/USERS/PROFILE
 │   ├── db/
 │   │   └── base.py              единый DeclarativeBase
 │   ├── modules/
@@ -124,7 +126,7 @@ Portal/
 │   │   │                        trash.html — корзина, form.html — карточка,
 │   │   │                        _form_fields_main.html / _form_fields_extra.html
 │   │   │                        — общие части полей
-│   │   └── templates_db/        index, section_form, block_form, block_view
+│   │   └── templates_db/        index, _cards, section_form, block_form, block_view
 │   └── static/
 │       ├── css/styles.css       рабочая копия дизайн-кода
 │       ├── img/logo.jpg
@@ -231,8 +233,8 @@ Portal/
 | --- | --- |
 | `models.py` | `Section`, `Tag`, `TemplateBlock`, ассоциативная таблица `block_tags` |
 | `schemas.py` | валидация разделов, заготовок, тегов, превью |
-| `service.py` | CRUD, поиск, теги, преобразование ORM в схемы чтения |
-| `routes.py` | `APIRouter(tags=["templates_db"])`: разделы, заготовки, поиск |
+| `service.py` | CRUD, поиск, теги, порционная выдача заготовок, преобразование ORM в схемы чтения |
+| `routes.py` | `APIRouter(tags=["templates_db"])`: разделы, заготовки, поиск, догрузка порции карточек |
 
 Модели:
 
@@ -259,6 +261,11 @@ Portal/
   принимает только адреса с префиксом `/templates-db` и добавляет к ним
   `?saved=1` или `?deleted=1`; чужой или пустой адрес заменяется на
   `/templates-db/?saved=1` (`?deleted=1`).
+- карточки на странице базы отдаются порциями: `list_blocks_page()` возвращает
+  `(карточки, всего найдено)`, страница берёт первые `BLOCKS_PAGE_SIZE` (30),
+  остальные догружает кнопка «Загрузить ещё…» — `GET /templates-db/blocks/more`
+  отдаёт только разметку карточек (`templates_db/_cards.html`), а
+  `render_partial()` рендерит её без шапки и меню.
 
 ### 4.4. `app/modules/settings` — справочники и разделы настроек
 
@@ -395,6 +402,7 @@ Middleware `tasks_menu_badge` работает на каждый `GET` стра�
 | GET | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit_form` | `templates_db/block_form.html` |
 | POST | `/templates-db/blocks/{block_id}/edit` | авторизован | `block_edit` | сохранение, `303` в раздел из `return_to` с `?saved=1` (без `return_to` — `/templates-db/?saved=1`) |
 | POST | `/templates-db/blocks/{block_id}/delete` | авторизован | `block_delete` | удаление, `303` в раздел из `return_to` с `?deleted=1`; тело формы читается через `request.form()`, пустое — не ошибка |
+| GET | `/templates-db/blocks/more` | авторизован | `blocks_more` | только разметка карточек `templates_db/_cards.html` (для кнопки «Загрузить ещё…»); параметры `section_id`, `tag`, `q`, `offset`; всего найдено — в заголовке `X-Blocks-Total` |
 
 ### 5.5. Настройки (`app/modules/settings/routes.py`)
 
@@ -700,6 +708,7 @@ Escape и клик по подложке.
 | `calculators/gosposhlina.html` | `money-input.js`; расчёт на сервере |
 | `calculators/_block_template.html` | `money-input.js`, `calc-core.js`, `js/<slug>.js` — эталон, роутом не используется |
 | `templates_db/index.html` | `templates_db.js` |
+| `templates_db/_cards.html` | нет: партиал карточек для `index.html` и для догрузки, скрипт подключает страница |
 | `templates_db/section_form.html` | `templates_db.js` |
 | `templates_db/block_form.html` | `templates_db.js` |
 | `templates_db/block_view.html` | `templates_db.js` |
@@ -719,15 +728,15 @@ Escape и клик по подложке.
 | `udostoverenie-dkp.js` | тариф за удостоверение ДКП (необязательная форма) |
 | `udostoverenie-dareniya.js` | тариф за удостоверение договора дарения |
 | `vydelenie-doley-msk.js` | подбор долей по МСК, стоимость доли и нотариальный тариф |
-| `templates_db.js` | копирование текста, окно правки карточки по щелчку (и по Enter/пробелу), копирование текста из окна правки с закрытием окна, поиск по Tab, подтверждение удаления |
+| `templates_db.js` | копирование текста, окно правки карточки по щелчку (и по Enter/пробелу), копирование текста из окна правки с закрытием окна, поиск по Tab, подтверждение удаления, догрузка следующих 30 карточек кнопкой «Загрузить ещё…» |
 | `tasks.js` | доска «Задачи»: перетаскивание с пересортировкой столбца по сроку, окно правки по щелчку на карточке (и по Enter/пробелу), окно создания, удаление из окна правки, чек-лист по типу, подтверждение удаления, обновление чисел метки «Задачи» и значка срока в меню после переноса |
 | `google-calendar.js` | опрос `/settings/google-calendar/connect/status`, ожидание входа в Google, перезагрузка страницы после подключения |
 | `app.js` | зарезервирован под общую логику портала |
 
 Версия статики задаётся параметром `?v=`: `base.html` подключает
-`css/styles.css?v=12`, а `tasks/index.html`, `tasks/form.html` и
-`tasks/trash.html` — `js/tasks.js?v=14`. Номер поднимают при правке файла,
-иначе браузер сотрудника может взять копию из кеша; сейчас версии
+`css/styles.css?v=13`, страницы `tasks` — `js/tasks.js?v=14`, а все четыре
+шаблона `templates_db` — `js/templates_db.js?v=15`. Номер поднимают при правке
+файла, иначе браузер сотрудника может взять копию из кеша; сейчас версии
 в шаблонах совпадают.
 
 Скрипты калькуляторов используют IIFE, `"use strict"`, ES5-совместимый
@@ -880,8 +889,13 @@ POST /calculators/gosposhlina
 
 ```text
 GET /templates-db/?section_id=&saved=&deleted=
-  → list_sections() + list_blocks()
-  → templates_db/index.html
+  → list_sections() + list_blocks_page(limit=30)
+  → templates_db/index.html (первые 30 карточек + кнопка «Загрузить ещё…»)
+
+GET /templates-db/blocks/more?section_id=&tag=&q=&offset=
+  → list_blocks_page(limit=30, offset=offset)
+  → render_partial → templates_db/_cards.html (только карточки)
+  → X-Blocks-Total: сколько всего найдено
 
 POST /templates-db/blocks/new
   → TemplateBlockCreate (поля и теги)
@@ -892,6 +906,21 @@ POST /templates-db/blocks/new
 
 Поиск `GET /templates-db/search` фильтрует по разделу, тегу и подстроке в
 заголовке/тексте. Просмотр блока — отдельная страница с кнопкой копирования.
+
+Карточки показываются порциями по 30 (`BLOCKS_PAGE_SIZE` в `service.py`):
+сразу после панели поиска стоит строка «Найдено: N», под сеткой — кнопка
+«Загрузить ещё…» (`data-load-more`, `data-next-offset`, `data-blocks-total`).
+Кнопка видна, только если найдено больше 30 карточек. Щелчок по ней
+(`loadMoreBlocks()` в `js/templates_db.js`) запрашивает
+`GET /templates-db/blocks/more` с условиями текущего поиска и `offset`,
+полученную разметку дописывает в конец сетки `[data-blocks-grid]` (у строки
+поиска тот же класс `.cards`, поэтому сетка помечена атрибутом), обновляет
+`data-next-offset` и прячется, когда показаны все карточки (обёртка
+`.cards-more` удаляется из разметки). Пока идёт запрос, кнопка `disabled`
+с подписью «Загружаем…»; при ошибке подпись возвращается, а `alert` пишет
+«Не удалось загрузить карточки…». Догруженные карточки
+работают так же, как исходные: окно правки открывается по щелчку, потому что
+разметка одна и та же (`templates_db/_cards.html`).
 
 Карточки на странице базы открывают окно «Редактирование карточки» щелчком
 (и с клавиатуры — Enter или пробел): `<article>` несёт `data-block-edit`,

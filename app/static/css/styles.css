@@ -1194,9 +1194,9 @@ button { font-family: inherit; }
 .modal--task > .calc__form { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .modal--task > .calc__form > .panel__head { grid-column: 1 / -1; }
 .modal__column { display: grid; gap: 12px; align-content: start; }
-/* Кнопок в окне правки три («Сохранить изменения», «Отмена», «Удалить
-   карточку»): на узком окне они переносятся на следующую строку, а не
-   вылезают за край */
+/* Кнопки в окне правки переносятся на следующую строку, а не вылезают
+   за край: в «Задачах» их три («Сохранить изменения», «Отмена», «Удалить
+   карточку»), в базе заготовок — четыре (ещё копирование) */
 .modal--task .modal__column > .calc__row { flex-wrap: wrap; }
 
 /* Окно правки карточки «Базы данных»: ряд кнопок стоит на нижней границе

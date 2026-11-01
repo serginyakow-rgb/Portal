@@ -73,3 +73,24 @@ class Task(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - отладочное представление
         return f"<Task id={self.id} title={self.title!r} status={self.status!r}>"
+
+
+class Contact(Base):
+    """Контакт конторы: имя, телефон и электронная почта.
+
+    Справочник кнопки «Контакты» в шапке доски «Задачи». Внешних ключей
+    у таблицы нет, поэтому модуль остаётся самодостаточным, а строку можно
+    добавлять и удалять без оглядки на карточки. Таблицу создаёт
+    ``Base.metadata.create_all`` при старте — как и остальные таблицы.
+    """
+
+    __tablename__ = "contacts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Телефон и почта необязательны: у контакта может быть только телефон
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    def __repr__(self) -> str:  # pragma: no cover - отладочное представление
+        return f"<Contact id={self.id} name={self.name!r}>"

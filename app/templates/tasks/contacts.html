@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon_contacts, status_done, status_warn %}
+
+{% block title %}Контакты · Нотариальная контора{% endblock %}
+
+{% block content %}
+{# Справочник контактов открывается кнопкой «Контакты» в шапке доски «Задачи».
+   Вид и работа повторяют раздел «Пользователи» в настройках: список в таблице
+   и панель формы под ним — добавление и правка выбранной строки (?edit=<id>).
+   Сообщения о результате приходят флагами адреса (?created=, ?updated=,
+   ?deleted=), ошибка проверки — тем же шаблоном с кодом 400.
+   Таблицы базы у справочника нет: удаление окончательное, корзины нет. #}
+<section class="panel">
+  <div class="panel__head">
+    <h1 class="panel__title">{{ icon_contacts(20) }} Контакты</h1>
+    <span class="panel__hint">Всего: {{ contacts|length }}</span>
+    <a class="btn btn--ghost" href="/tasks/" title="Вернуться к доске задач">Назад к доске</a>
+  </div>
+
+  {% if created %}{{ status_done("Контакт добавлен в справочник.") }}{% endif %}
+  {% if updated %}{{ status_done("Изменения сохранены: контакт обновлён.") }}{% endif %}
+  {% if deleted %}{{ status_done("Контакт удалён из справочника.") }}{% endif %}
+  {% if error %}{{ status_warn(error) }}{% endif %}
+
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>Телефон</th>
+          <th>Электронная почта</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in contacts %}
+        <tr>
+          <td>{{ item.name }}</td>
+          {# Телефон и почту набирают вручную, поэтому незаполненное поле — прочерк #}
+          <td class="mono">{{ item.phone or "—" }}</td>
+          <td>{{ item.email or "—" }}</td>
+          <td>
+            {% if edit_contact and edit_contact.id == item.id %}
+            <span class="panel__hint">Редактируется — форма в панели ниже</span>
+            {% else %}
+            <a class="btn btn--ghost" href="/tasks/contacts?edit={{ item.id }}#edit-panel">Изменить</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4" class="panel__hint">Контактов пока нет — добавьте первый в форме ниже.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel" id="edit-panel">
+  {# Панель формы работает в двух режимах: добавление и правка контакта #}
+  <div class="panel__head">
+    {% if edit_contact %}
+    <h1 class="panel__title">Изменение контакта: {{ edit_contact.name }}</h1>
+    <span class="panel__hint">Имя обязательно, телефон и почта — по желанию</span>
+    {% else %}
+    <h1 class="panel__title">Новый контакт</h1>
+    <span class="panel__hint">Имя обязательно, телефон и почта — по желанию</span>
+    {% endif %}
+  </div>
+
+  {% if edit_contact %}
+  {# Форма правки выбранного контакта: имя, телефон и почта #}
+  <form class="calc__form" method="post" action="/tasks/contacts/{{ edit_contact.id }}/update">
+    <div class="field">
+      <label for="edit_contact_name">Имя</label>
+      <input id="edit_contact_name" name="name" type="text" value="{{ edit_contact.name }}" required
+             autofocus autocomplete="off" placeholder="Иванов Иван Иванович">
+    </div>
+
+    <div class="field">
+      <label for="edit_contact_phone">Телефон</label>
+      <input id="edit_contact_phone" name="phone" type="tel" value="{{ edit_contact.phone or '' }}"
+             autocomplete="off" placeholder="+7 900 000-00-00">
+    </div>
+
+    <div class="field">
+      <label for="edit_contact_email">Электронная почта</label>
+      <input id="edit_contact_email" name="email" type="text" value="{{ edit_contact.email or '' }}"
+             autocomplete="off" placeholder="name@example.ru">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+      <a class="btn btn--ghost" href="/tasks/contacts">Отмена</a>
+      <span class="panel__hint">Телефон — цифры, пробел и знаки + ( ) -</span>
+    </div>
+  </form>
+
+  {# Подтверждение спрашивает окно из js/tasks.js — то же, что у корзины #}
+  <form class="calc__form" method="post" action="/tasks/contacts/{{ edit_contact.id }}/delete"
+        data-confirm="Удалить контакт «{{ edit_contact.name }}»?">
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="submit">Удалить контакт</button>
+      <span class="panel__hint">Контакт удаляется без возможности восстановления</span>
+    </div>
+  </form>
+  {% else %}
+  {# Форма добавления нового контакта #}
+  <form class="calc__form" method="post" action="/tasks/contacts">
+    <div class="field">
+      <label for="contact_name">Имя</label>
+      <input id="contact_name" name="name" type="text" required autocomplete="off"
+             placeholder="Иванов Иван Иванович">
+    </div>
+
+    <div class="field">
+      <label for="contact_phone">Телефон</label>
+      <input id="contact_phone" name="phone" type="tel" autocomplete="off"
+             placeholder="+7 900 000-00-00">
+    </div>
+
+    <div class="field">
+      <label for="contact_email">Электронная почта</label>
+      <input id="contact_email" name="email" type="text" autocomplete="off"
+             placeholder="name@example.ru">
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Добавить контакт</button>
+      <span class="panel__hint">Имя обязательно, телефон и почта — по желанию</span>
+    </div>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{# Окно подтверждения удаления для формы с data-confirm — как в «Корзине» #}
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=16"></script>
+{% endblock %}

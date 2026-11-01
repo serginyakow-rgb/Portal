@@ -9,6 +9,10 @@ from app.core.sync import SectionState
 # Границы длины полей
 MAX_TITLE = 200
 MAX_CONTACT = 200
+# Границы полей справочника контактов (кнопка «Контакты» в шапке «Задач»)
+MAX_CONTACT_NAME = 200
+MAX_CONTACT_PHONE = 50
+MAX_CONTACT_EMAIL = 120
 
 # Тип карточки: значение хранится в БД, подпись показывается на доске и в формах
 # Порядок словаря CARD_TYPE_LABELS = порядок пунктов в списке «Тип задачи»
@@ -331,4 +335,67 @@ class BoardState(SectionState):
     # Числа окна «Задачи по сотрудникам»: {id сотрудника: карточек в работе}.
     # Окно есть только у роли «Нотариус» (admin), остальным словарь пустой
     assignee_counts: dict[int, int] = {}
+
+
+class ContactInput(BaseModel):
+    """Данные формы контакта: имя, телефон и электронная почта.
+
+    Имя обязательно, телефон и почта — по желанию: у контакта может быть
+    только телефон. Пробелы схлопываются, пустое необязательное поле означает
+    «нет значения» — сервис превращает его в NULL, а не в пустую строку.
+    """
+
+    name: str = ""
+    phone: str = ""
+    email: str = ""
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        """Схлопывает пробелы и требует непустое имя."""
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("Имя контакта обязательно")
+        if len(cleaned) > MAX_CONTACT_NAME:
+            raise ValueError(f"Имя слишком длинное (максимум {MAX_CONTACT_NAME} символов)")
+        return cleaned
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        """Телефон — цифры, пробел и знаки + ( ) -; хотя бы одна цифра."""
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            return ""
+        if len(cleaned) > MAX_CONTACT_PHONE:
+            raise ValueError(f"Телефон слишком длинный (максимум {MAX_CONTACT_PHONE} символов)")
+        if any(symbol not in "+-() 0123456789" for symbol in cleaned):
+            raise ValueError("Телефон может содержать только цифры, пробел и знаки + ( ) -")
+        if not any(symbol.isdigit() for symbol in cleaned):
+            raise ValueError("Телефон должен содержать хотя бы одну цифру")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        """Почта — простая проверка формы «что-то@что-то.домен», без зависимостей."""
+        cleaned = value.strip()
+        if not cleaned:
+            return ""
+        if len(cleaned) > MAX_CONTACT_EMAIL:
+            raise ValueError(
+                f"Электронная почта слишком длинная (максимум {MAX_CONTACT_EMAIL} символов)"
+            )
+        local, at_sign, domain = cleaned.partition("@")
+        if (
+            not at_sign
+            or not local
+            or not domain
+            or "." not in domain
+            or domain.startswith(".")
+            or domain.endswith(".")
+            or " " in cleaned
+        ):
+            raise ValueError("Электронная почта указана неверно")
+        return cleaned
 

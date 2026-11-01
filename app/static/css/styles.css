@@ -601,6 +601,18 @@ button { font-family: inherit; }
 .field--due { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
 .field--due > .field__main { display: grid; gap: 6px; width: var(--task-action-width, 160px); flex: none; }
 
+/* Поле «Контакт» в окне «Новая карточка»: справа от него стоит кнопка
+   справочника, поэтому поле уже обычного — подпись занимает обе колонки,
+   а поле и кнопка делят вторую строку (шаг сетки .field — 6px, между
+   колонками чуть больше). align-items: end прижимает кнопку к самому полю,
+   а не к подписи: она ниже подписи на её высоту и стоит с полем на одной
+   линии. */
+.field--contact { grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; align-items: end; }
+.field--contact > label { grid-column: 1 / -1; }
+/* Кнопка тянется по высоте поля ввода, а не по своим 41px: у поля та же
+   строка, но округление шрифта даёт 39–40px и кнопка выступала бы сверху */
+.field--contact > .btn--icon { min-height: 0; height: 100%; }
+
 /* Блок Google Календаря в форме карточки: надпись в стиле .field label,
    под ней чекбокс и время без отдельных подписей */
 .gcal { display: grid; gap: 6px; }
@@ -1273,6 +1285,39 @@ dialog:not([open]) { display: none; }
   font-weight: 600;
   text-align: right;
 }
+
+/* Окно «Контакты» (кнопка справа от поля «Контакт» в окне «Новая карточка»):
+   контакты идут друг за другом, как теги в карточках «Базы данных» (.status):
+   мелкий текст-кнопка без рамки, фона и подчёркивания, по ширине окна
+   строки переносятся (flex-wrap). Телефон в списке не выводится — он лежит
+   в data-contact-phone и попадает в поле вместе с именем. Кнопка, а не
+   ссылка: контакт остаётся элементом управления (клавиатура, фокус). */
+.modal--contacts { width: min(420px, calc(100% - 32px)); }
+.contacts-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Пустое состояние занимает всю строку, иначе текст ляжет узкой колонкой */
+.contacts-pick > .panel__hint { width: 100%; }
+.contacts-pick__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--navy);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  /* Имя не рвётся по словам: по ширине окна переносится целиком контакт */
+  white-space: nowrap;
+  cursor: pointer;
+}
+.contacts-pick__link:hover { color: var(--gold); }
+.contacts-pick__link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* На узком экране столбцы фиксированной ширины: доска прокручивается
    по горизонтали, а карточки не сжимаются до нечитаемого вида */

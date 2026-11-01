@@ -12,7 +12,8 @@
 2. ``inheritance`` — справочник региональных тарифов;
 3. ``templates_db`` — разделы, теги, заготовки и связи «заготовка — тег»;
 4. ``tasks`` — карточки доски, включая корзину (``deleted_at``);
-5. ``google_calendar`` — файлы ключа и токена: пишутся после фиксации БД.
+5. ``contacts`` — справочник контактов конторы (кнопка «Контакты» в «Задачах»);
+6. ``google_calendar`` — файлы ключа и токена: пишутся после фиксации БД.
 
 Пароли пользователей в копию попадают только по флагу «Включить открытые
 пароли»: без него в файле нет ни ``hashed_password``, ни ``password_plain``.
@@ -35,7 +36,7 @@ from app.modules.backup import registry
 from app.modules.backup.registry import BackupSection, BackupValidationError
 from app.modules.google_calendar import service as google_calendar
 from app.modules.settings.models import InheritanceTariff
-from app.modules.tasks.models import Task
+from app.modules.tasks.models import Contact, Task
 from app.modules.templates_db.models import Section, Tag, TemplateBlock, block_tags
 
 # Подписи разделов: попадают в сообщения нотариусу и в отчёт
@@ -43,6 +44,7 @@ TITLE_USERS = "Пользователи"
 TITLE_INHERITANCE = "Региональные тарифы"
 TITLE_TEMPLATES_DB = "База данных (разделы, теги, заготовки)"
 TITLE_TASKS = "Задачи"
+TITLE_CONTACTS = "Контакты"
 TITLE_GOOGLE_CALENDAR = "Google Календарь"
 
 
@@ -518,6 +520,43 @@ async def _import_tasks(db: AsyncSession, payload: dict[str, Any]) -> None:
         )
 
 
+# ── Контакты: справочник контактов конторы ─────────────────────────────────
+
+
+async def _export_contacts(db: AsyncSession) -> dict[str, Any]:
+    """Справочник контактов: имя, телефон и почта каждой записи."""
+    result = await db.execute(select(Contact).order_by(Contact.id))
+    rows = [
+        {
+            "id": contact.id,
+            "name": contact.name,
+            "phone": contact.phone,
+            "email": contact.email,
+        }
+        for contact in result.scalars().all()
+    ]
+    return {"rows": rows}
+
+
+async def _clear_contacts(db: AsyncSession) -> None:
+    """Удаляет весь справочник перед восстановлением копии."""
+    await db.execute(delete(Contact))
+
+
+async def _import_contacts(db: AsyncSession, payload: dict[str, Any]) -> None:
+    """Восстанавливает контакты, сохраняя id: телефон и почта могут быть пустыми."""
+    title = TITLE_CONTACTS
+    for index, row in enumerate(_require_rows(payload, title), start=1):
+        db.add(
+            Contact(
+                id=_require_int(row, "id", title, index),
+                name=_require_str(row, "name", title, index),
+                phone=_optional_str(row, "phone", title, index),
+                email=_optional_str(row, "email", title, index),
+            )
+        )
+
+
 # ── Google Календарь: файлы ключа, токена и почты ─────────────────────────
 
 
@@ -584,6 +623,14 @@ SECTIONS: tuple[BackupSection, ...] = (
         export=_export_tasks,
         import_=_import_tasks,
         clear=_clear_tasks,
+    ),
+    BackupSection(
+        key="contacts",
+        title=TITLE_CONTACTS,
+        order=45,
+        export=_export_contacts,
+        import_=_import_contacts,
+        clear=_clear_contacts,
     ),
     BackupSection(
         key="google_calendar",

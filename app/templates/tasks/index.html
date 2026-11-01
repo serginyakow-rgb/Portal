@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon_plus, icon_edit,
                                status_done, status_warn, icon_due_alert,
-                               icon_eye %}
+                               icon_eye, icon_trash, icon_contacts %}
 
 {% block title %}Задачи · Нотариальная контора{% endblock %}
 
@@ -41,7 +41,15 @@
       <button class="btn btn--primary" type="submit"
               title="Обновить доску по выбранным фильтрам">Обновить</button>
       <a class="btn btn--ghost" href="/tasks/" title="Очистить поиск и показать карточки текущего сотрудника">Сброс</a>
-      <a class="btn btn--ghost" href="/tasks/trash" title="Удалённые карточки">Корзина</a>
+      {# «Корзина» — значок вместо подписи: слово осталось в title и aria-label,
+         смысл кнопки не потерян. Значок в btn--icon сжимает кнопку до квадрата #}
+      <a class="btn btn--ghost btn--icon" href="/tasks/trash" aria-label="Корзина"
+         title="Удалённые карточки">{{ icon_trash(16) }}</a>
+      {# Справочник контактов конторы: стоит справа от «Корзины», у нотариуса —
+         перед «глазом». Доступен всем сотрудникам, как и сама доска. Подписи
+         нет, как у «Корзины»: слово осталось в title и aria-label #}
+      <a class="btn btn--ghost btn--icon" href="/tasks/contacts" aria-label="Контакты"
+         title="Контакты: имена, телефоны и почта">{{ icon_contacts(16) }}</a>
       {# Глаз — только нотариусу (роль admin): окно со списком сотрудников
          и числом закреплённых за каждым задач. type="button" обязателен: внутри
          GET-формы фильтра обычная кнопка отправила бы её вместо открытия окна #}
@@ -103,7 +111,9 @@
     </div>
 
     <div class="modal__column">
-      {% with card_type=default_card_type, checklist={} %}
+      {# contacts_picker=true — справа от поля «Контакт» кнопка справочника,
+         окно выбора «Контакты» ниже; то же в окне правки (ниже) #}
+      {% with card_type=default_card_type, checklist={}, contacts_picker=true %}
       {% include "tasks/_form_fields_main.html" %}
       {% endwith %}
 
@@ -130,6 +140,9 @@
    Блок «Добавить в Google календарь» здесь скрыт всегда (gcal_enabled=false):
    при правке событие не создаётся. Префикс id «edit-» — чтобы поля окна
    не совпадали по id с полями окна создания (label for его повторяет).
+   contacts_picker=true — справа от «Контакта» та же кнопка справочника, что
+   в окне создания: она передаёт в общее окно «Контакты» id поля «edit-contact»,
+   и выбранный контакт попадает в поле правки.
    Кнопки: сохранить, отмена и «Удалить карточку» — удаление убирает карточку
    в корзину (/tasks/delete/{id}) после подтверждения (js/tasks.js). #}
 <dialog class="modal modal--task" id="task-edit-modal" aria-labelledby="task-edit-title">
@@ -139,7 +152,7 @@
     </div>
 
     <div class="modal__column">
-      {% with card_type=default_card_type, checklist={}, field_prefix="edit-", gcal_enabled=false %}
+      {% with card_type=default_card_type, checklist={}, field_prefix="edit-", gcal_enabled=false, contacts_picker=true %}
       {% include "tasks/_form_fields_main.html" %}
       {% endwith %}
 
@@ -209,9 +222,47 @@
   </div>
 </dialog>
 {% endif %}
+
+{# Окно «Контакты» для поля карточки: контакты справочника идут друг за другом,
+   как теги в карточках «Базы данных» (мелкий текст-кнопка, перенос по ширине
+   окна); телефон в списке не показываем, но он лежит в data-contact-phone.
+   Открывает кнопка справа от поля «Контакт» в окне
+   «Новая карточка» (data-modal-open="contacts-picker"); она же передаёт id
+   поля в data-contacts-target. Щелчок по имени закрывает окно и заполняет
+   поле «имя, телефон» (js/tasks.js). Список приходит из контекста доски
+   (_render_board: list_contacts), поэтому окно показывает справочник на
+   момент загрузки страницы. У контакта без телефона в data-contact-phone
+   пусто — в поле попадёт только имя (contacts.html: незаполненное поле).
+   Закрывают «Закрыть», Escape и клик по подложке, как у остальных окон. #}
+<dialog class="modal modal--contacts" id="contacts-picker" aria-labelledby="contacts-picker-title">
+  <div class="calc__form">
+    <div class="panel__head">
+      <h2 class="panel__title" id="contacts-picker-title">Контакты</h2>
+    </div>
+    <ul class="contacts-pick">
+      {% for item in contacts %}
+      <li class="contacts-pick__item">
+        {# Ссылка — кнопка: внутри формы доски она не должна отправлять
+           форму, поэтому type="button". В строке только имя: контакты идут
+           подряд, как теги в «Базе данных», телефон в списке не показываем —
+           он остаётся в data-contact-phone и попадёт в поле с именем #}
+        <button class="contacts-pick__link" type="button"
+                data-contact-name="{{ item.name }}" data-contact-phone="{{ item.phone or '' }}">
+          <span class="contacts-pick__name">{{ item.name }}</span>
+        </button>
+      </li>
+      {% else %}
+      <li class="panel__hint">Справочник пуст — добавьте контакты в разделе «Контакты».</li>
+      {% endfor %}
+    </ul>
+    <div class="calc__row">
+      <button class="btn btn--ghost" type="button" data-modal-close>Закрыть</button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/sync.js') }}?v=1"></script>
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=15"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=16"></script>
 {% endblock %}

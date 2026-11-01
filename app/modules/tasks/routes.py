@@ -21,10 +21,12 @@ from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
 from app.modules.auth.service import list_users
 from app.modules.google_calendar import service as google_calendar
+from app.modules.tasks.models import Contact
 from app.modules.tasks.schemas import (
     BoardState,
     CARD_TYPE_CHECKLISTS,
     CARD_TYPE_LABELS,
+    ContactInput,
     DEFAULT_CARD_TYPE,
     DEFAULT_STATUS,
     STATUS_CLASSES,
@@ -42,16 +44,21 @@ from app.modules.tasks.service import (
     count_menu_badge,
     count_tasks_by_assignee,
     count_trash,
+    create_contact,
     create_task,
+    delete_contact,
+    get_contact,
     get_task,
     group_by_status,
     list_board,
+    list_contacts,
     list_trash,
     move_task,
     purge_task,
     read_task,
     restore_task,
     task_progress,
+    update_contact,
     update_task,
 )
 
@@ -137,6 +144,11 @@ async def _render_board(
     # состояние, отпечаток которого попал в data-board-version (см. task_board)
     version = await board_version(db, users)
     tasks = await list_board(db, assignee_id=assignee_id, query=query)
+    # Справочник контактов — для окна выбора у поля «Контакт» в окне
+    # «Новая карточка» (кнопка справа от поля, js/tasks.js). Список берётся
+    # при каждой отрисовке доски: контакты, добавленные в разделе
+    # «Контакты», видны после её обновления.
+    contacts = await list_contacts(db)
     # Сколько задач закреплено за каждым сотрудником — для окна по шестерёнке.
     # Окно есть только у роли «Нотариус» (admin), поэтому и запрос нужен лишь ей.
     assignee_counts = await count_tasks_by_assignee(db) if user.role == "admin" else {}
@@ -155,6 +167,8 @@ async def _render_board(
         assignee_id=assignee_id,
         query=query,
         assignee_counts=assignee_counts,
+        # Контакты справочника — список окна выбора у поля «Контакт»
+        contacts=contacts,
         # Фильтры в адресе окна правки: после сохранения доска откроется с ними
         board_filters=_board_filters(assignee_id, query),
         card_types=CARD_TYPE_LABELS,
@@ -194,6 +208,38 @@ async def _render_trash(
         trash_count=await count_trash(db),
         restored=restored,
         purged=purged,
+        error=error,
+        status_code=status_code,
+    )
+
+
+async def _render_contacts(
+    request: Request,
+    db: AsyncSession,
+    user: User,
+    *,
+    edit_contact: Contact | None = None,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    error: str | None = None,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    """Рендерит справочник контактов: список и панель формы под ним.
+
+    `edit_contact` переводит форму в режим правки выбранной строки: адрес
+    `?edit=<id>` приходит из ссылки «Изменить» в списке.
+    """
+    return render(
+        request,
+        "tasks/contacts.html",
+        user=user,
+        active_menu=MENU_TASKS,
+        contacts=await list_contacts(db),
+        edit_contact=edit_contact,
+        created=created,
+        updated=updated,
+        deleted=deleted,
         error=error,
         status_code=status_code,
     )
@@ -776,3 +822,129 @@ async def task_move(
         menu_due_soon=badge.due_soon,
         assignee_counts=assignee_counts,
     )
+
+
+@router.get("/contacts", response_class=HTMLResponse, response_model=None)
+async def contacts_page(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    edit: int | None = None,
+) -> HTMLResponse:
+    """Справочник контактов: список и форма добавления/правки на одной странице.
+
+    Доступен всем сотрудникам, как и сама доска: отдельной роли у раздела нет.
+    Флаги адреса (`?created=`, `?updated=`, `?deleted=`) показывают сообщение
+    о результате — по образцу раздела «Пользователи» в настройках.
+    """
+    edit_contact = await get_contact(db, edit) if edit is not None else None
+    if edit is not None and edit_contact is None:
+        # Ссылка устарела: контакт уже удалили в другой вкладке
+        return await _render_contacts(
+            request,
+            db,
+            user,
+            error="Контакт для изменения не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return await _render_contacts(
+        request,
+        db,
+        user,
+        edit_contact=edit_contact,
+        created=created,
+        updated=updated,
+        deleted=deleted,
+    )
+
+
+@router.post("/contacts", response_class=HTMLResponse, response_model=None)
+async def contact_create(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    name: Annotated[str, Form()] = "",
+    phone: Annotated[str, Form()] = "",
+    email: Annotated[str, Form()] = "",
+) -> HTMLResponse | RedirectResponse:
+    """Добавляет контакт и возвращает к списку справочника.
+
+    Форма отправляется обычным POST: без скрипта страница тоже работает.
+    Ошибка проверки возвращает ту же страницу с кодом 400 и текстом ошибки.
+    """
+    try:
+        data = ContactInput(name=name, phone=phone, email=email)
+    except ValidationError as exc:
+        return await _render_contacts(
+            request,
+            db,
+            user,
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    await create_contact(db, data)
+    return RedirectResponse("/tasks/contacts?created=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/contacts/{contact_id}/update", response_class=HTMLResponse, response_model=None)
+async def contact_update(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    contact_id: int,
+    name: Annotated[str, Form()] = "",
+    phone: Annotated[str, Form()] = "",
+    email: Annotated[str, Form()] = "",
+) -> HTMLResponse | RedirectResponse:
+    """Сохраняет правку контакта и возвращает к списку справочника."""
+    contact = await get_contact(db, contact_id)
+    if contact is None:
+        return await _render_contacts(
+            request,
+            db,
+            user,
+            error="Контакт не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    try:
+        data = ContactInput(name=name, phone=phone, email=email)
+    except ValidationError as exc:
+        # Панель остаётся в режиме правки: сотрудник исправляет поле на месте
+        return await _render_contacts(
+            request,
+            db,
+            user,
+            edit_contact=contact,
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    await update_contact(db, contact, data)
+    return RedirectResponse("/tasks/contacts?updated=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/contacts/{contact_id}/delete", response_class=HTMLResponse, response_model=None)
+async def contact_delete(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: CurrentUser,
+    contact_id: int,
+) -> HTMLResponse | RedirectResponse:
+    """Удаляет контакт из справочника без возможности восстановления.
+
+    Корзины у справочника нет: это не карточки доски, восстанавливать нечего.
+    Подтверждение спрашивает окно из js/tasks.js (атрибут data-confirm).
+    """
+    contact = await get_contact(db, contact_id)
+    if contact is None:
+        return await _render_contacts(
+            request,
+            db,
+            user,
+            error="Контакт не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    await delete_contact(db, contact)
+    return RedirectResponse("/tasks/contacts?deleted=1", status_code=status.HTTP_303_SEE_OTHER)

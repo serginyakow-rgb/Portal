@@ -12,9 +12,10 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.sync import revision
-from app.modules.tasks.models import Task, now_utc
+from app.modules.tasks.models import Contact, Task, now_utc
 from app.modules.tasks.schemas import (
     CARD_TYPE_LABELS,
+    ContactInput,
     DEFAULT_STATUS,
     STATUS_ORDER,
     TaskCreate,
@@ -557,4 +558,40 @@ async def restore_task(db: AsyncSession, task: Task) -> Task:
 async def purge_task(db: AsyncSession, task: Task) -> None:
     """Удаляет карточку из корзины окончательно, без возможности восстановления."""
     await db.delete(task)
+    await db.commit()
+
+
+async def list_contacts(db: AsyncSession) -> list[Contact]:
+    """Все контакты справочника в алфавитном порядке имён."""
+    result = await db.execute(select(Contact).order_by(Contact.name, Contact.id))
+    return list(result.scalars().all())
+
+
+async def get_contact(db: AsyncSession, contact_id: int) -> Contact | None:
+    """Контакт по идентификатору; None — такой строки нет."""
+    return await db.get(Contact, contact_id)
+
+
+async def create_contact(db: AsyncSession, data: ContactInput) -> Contact:
+    """Добавляет контакт в справочник: пустые телефон и почта ложатся в NULL."""
+    contact = Contact(name=data.name, phone=data.phone or None, email=data.email or None)
+    db.add(contact)
+    await db.commit()
+    await db.refresh(contact)
+    return contact
+
+
+async def update_contact(db: AsyncSession, contact: Contact, data: ContactInput) -> Contact:
+    """Меняет имя, телефон и электронную почту контакта."""
+    contact.name = data.name
+    contact.phone = data.phone or None
+    contact.email = data.email or None
+    await db.commit()
+    await db.refresh(contact)
+    return contact
+
+
+async def delete_contact(db: AsyncSession, contact: Contact) -> None:
+    """Удаляет контакт из справочника без возможности восстановления."""
+    await db.delete(contact)
     await db.commit()

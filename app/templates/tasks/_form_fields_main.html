@@ -12,7 +12,12 @@
      передаёт false, потому что при правке событие не создаётся. Без переменной
      блок виден только при создании (not task).
    На доске title, contact и due_date не переданы — поля пустые,
-   а тип карточки берётся из default_card_type. #}
+   а тип карточки берётся из default_card_type.
+   contacts_picker — показывать ли справа от поля «Контакт» кнопку справочника
+     «Контакты» (окно выбора в tasks/index.html): оба окна доски — «Новая
+     карточка» и «Редактирование карточки» — передают true; страница
+     /tasks/create флаг не ставит и видит обычное поле. #}
+{% from "_macros.html" import icon_contacts %}
 {% set field_id = field_prefix|default("") %}
 {% set form_card_type = card_type or default_card_type %}
 
@@ -31,10 +36,23 @@
          autocomplete="off" placeholder="Например: Договор дарения квартиры">
 </div>
 
-<div class="field">
+<div class="field{% if contacts_picker %} field--contact{% endif %}">
   <label for="{{ field_id }}contact">Контакт</label>
   <input id="{{ field_id }}contact" name="contact" type="text" value="{{ contact }}" autocomplete="off"
          placeholder="Телефон или имя клиента">
+  {# Кнопка справочника: поле становится уже (колонка поля плюс колонка
+     кнопки, styles.css → .field--contact), кнопка стоит справа на линии
+     самого поля. data-contacts-target — id поля, куда js/tasks.js вернёт
+     имя и телефон выбранного контакта; data-modal-open открывает окно
+     «Контакты» на доске (tasks/index.html). Одно окно «Контакты» обслуживает
+     обе кнопки: в окне создания поле «contact», в окне правки — «edit-contact».
+     Без этого флага (страница /tasks/create) разметка прежняя: поле
+     на всю ширину. #}
+  {% if contacts_picker %}
+  <button class="btn btn--ghost btn--icon" type="button" data-modal-open="contacts-picker"
+          data-contacts-target="{{ field_id }}contact" aria-label="Контакты"
+          title="Выбрать контакт из справочника">{{ icon_contacts(16) }}</button>
+  {% endif %}
 </div>
 
 <div class="field field--due">

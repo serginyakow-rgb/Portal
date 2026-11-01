@@ -2,7 +2,7 @@
    разметки фрагментом.
    Подключается на странице раздела перед его скриптом, например:
      <script src="…/js/sync.js?v=1"></script>
-     <script src="…/js/tasks.js?v=15"></script>
+     <script src="…/js/tasks.js?v=16"></script>
    Раздел отдаёт два адреса (первым их сделали «Задачи»):
      GET <раздел>/state — JSON с полем version и полями раздела;
      GET <раздел>/board — фрагмент разметки и заголовок X-Section-Version.

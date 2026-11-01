@@ -444,10 +444,27 @@
     }
     dialog.showModal();
     var firstField = dialog.querySelector("input:not([type=hidden]), select, textarea");
+    if (!firstField) {
+      // Окно без полей ввода (список контактов справочника): фокус — на первом
+      // пункте списка, чтобы контакт можно было выбрать с клавиатуры
+      firstField = dialog.querySelector("[data-contact-name]");
+    }
     if (firstField) {
       firstField.focus();
     }
     return true;
+  }
+
+  // Значение поля «Контакт» для выбранного в справочнике контакта: имя
+  // и телефон через запятую — так их видно в узком поле и на карточке.
+  // Пустой телефон (в справочнике он необязателен) оставляет только имя.
+  function contactValue(name, phone) {
+    var contactName = (name || "").trim();
+    var contactPhone = (phone || "").trim();
+    if (contactName && contactPhone) {
+      return contactName + ", " + contactPhone;
+    }
+    return contactName || contactPhone;
   }
 
   // Поля окна правки ищутся по именам и data-хукам: разметка — те же части,
@@ -539,7 +556,38 @@
       var modalId = opener.getAttribute("data-modal-open") || "";
       var dialog = modalId ? document.getElementById(modalId) : null;
       if (dialog && openModal(dialog)) {
+        // Кнопка справа от поля «Контакт» передаёт id поля окна, в которое
+        // вернётся выбранный контакт: окно выбора одно на страницу
+        var contactsTarget = opener.getAttribute("data-contacts-target");
+        if (contactsTarget) {
+          dialog.setAttribute("data-contacts-target", contactsTarget);
+        }
         event.preventDefault();
+      }
+      return;
+    }
+
+    // Выбор контакта в окне справочника: имя и телефон уходят в поле
+    // «Контакт» (data-contacts-target задал открыватель), окно закрывается,
+    // фокус возвращается в поле — можно сразу продолжить заполнение карточки
+    var contactPick = closestElement(event.target, "[data-contact-name]");
+    if (contactPick) {
+      var pickerDialog = contactPick.closest("dialog");
+      var pickerTarget = pickerDialog
+        ? pickerDialog.getAttribute("data-contacts-target") || ""
+        : "";
+      var contactField = pickerTarget ? document.getElementById(pickerTarget) : null;
+      if (contactField) {
+        contactField.value = contactValue(
+          contactPick.getAttribute("data-contact-name"),
+          contactPick.getAttribute("data-contact-phone")
+        );
+      }
+      if (pickerDialog) {
+        pickerDialog.close();
+      }
+      if (contactField) {
+        contactField.focus();
       }
       return;
     }

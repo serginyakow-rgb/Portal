@@ -31,6 +31,12 @@ config/google_calendar/
 # Локальная диагностика вёрстки (layout probe)
 app/static/_probe.html
 
+# Настольная сборка: установщик и промежуточные файлы PyInstaller
+desktop/dist/
+desktop/build/
+desktop/output/
+desktop/portal.ico
+
 # Редакторы / ОС
 .vscode/
 .idea/

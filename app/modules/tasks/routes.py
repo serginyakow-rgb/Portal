@@ -124,6 +124,7 @@ async def _render_board(
     saved: bool = False,
     deleted: bool = False,
     gcal: str = "",
+    edited: bool = False,
     moved: str = "",
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
@@ -135,6 +136,9 @@ async def _render_board(
 
     `moved` — куда карточка переехала при сохранении правки (`queue`, когда
     сняли исполнителя): об этом доска сообщает над столбцами.
+
+    `edited` — событие Google Календаря создало окно правки: доска подписывает
+    сообщение словами «Изменения сохранены» (см. tasks/index.html).
     """
     users = await list_users(db)
     # Неизвестный фильтр (сотрудника удалили) сбрасываем: доска показывается целиком
@@ -182,6 +186,7 @@ async def _render_board(
         saved=saved,
         deleted=deleted,
         gcal=gcal,
+        edited=edited,
         moved=moved,
         error=error,
         status_code=status_code,
@@ -304,6 +309,7 @@ async def index_page(
     saved: bool = False,
     deleted: bool = False,
     gcal: str = "",
+    edited: bool = False,
     moved: str = "",
 ) -> HTMLResponse:
     """Доска задач: четыре столбца и фильтры (исполнитель и поиск).
@@ -315,9 +321,9 @@ async def index_page(
     в фильтре «Исполнитель» подставляется текущий сотрудник: доска сразу
     показывает его карточки и карточки без исполнителя. Туда же ведёт кнопка
     «Сброс» — она очищает поиск и возвращает фильтр к текущему сотруднику.
-    Переходы после действий (`?saved=`, `?deleted=`, `?gcal=`, `?moved=`)
-    и поиск (`?q=`) фильтр не подставляют — на экране остаётся то, что
-    записано в адресе.
+    Переходы после действий (`?saved=`, `?deleted=`, `?gcal=`, `?edited=`,
+    `?moved=`) и поиск (`?q=`) фильтр не подставляют — на экране остаётся то,
+    что записано в адресе.
     """
     # «Вход в раздел» — адрес без параметров: подставляем авторизованного
     # сотрудника. Пустой `?assignee=` (пункт «Все сотрудники») и любой
@@ -335,6 +341,7 @@ async def index_page(
         saved=saved,
         deleted=deleted,
         gcal=gcal,
+        edited=edited,
         moved=moved,
     )
 
@@ -611,6 +618,8 @@ async def task_update(
     assignee_id: Annotated[str, Form()] = "",
     card_type: Annotated[str, Form()] = "",
     checklist: Annotated[list[str] | None, Form()] = None,
+    goog_cal: Annotated[str, Form(alias="GoogCal")] = "",
+    goog_cal_time: Annotated[str, Form(alias="GoogCalTime")] = google_calendar.DEFAULT_EVENT_TIME,
     assignee: str | None = None,
     q: str = "",
 ) -> HTMLResponse | RedirectResponse:
@@ -620,6 +629,10 @@ async def task_update(
     (service.update_task), поэтому в адрес возврата добавляется `moved=queue`:
     доска сообщает об этом над столбцами, иначе карточка молча исчезла бы из
     своего столбца.
+
+    Отметка «Добавить в Google календарь» из окна правки обрабатывается так же,
+    как при создании карточки (task_create): событие создаётся после сохранения,
+    а его сбой правку не отменяет.
     """
     task = await get_task(db, task_id)
     if task is None:
@@ -690,9 +703,40 @@ async def task_update(
         if updated.status == DEFAULT_STATUS and before_status != DEFAULT_STATUS
         else ""
     )
-    return RedirectResponse(
-        f"/tasks/?{board_filters}&saved=1{moved}", status_code=status.HTTP_303_SEE_OTHER
-    )
+    redirect_url = f"/tasks/?{board_filters}&saved=1{moved}"
+
+    # Отметка «Добавить в Google календарь» из окна правки: правила те же, что
+    # у окна создания (task_create). Событие создаётся после записи карточки,
+    # чтобы сбой календаря не отменял уже введённые данные; edited=1 — событие
+    # создало окно правки, и доска подпишет сообщение словами «Изменения
+    # сохранены» (tasks/index.html)
+    if not goog_cal:
+        return RedirectResponse(redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
+    gcal_url = f"{redirect_url}&edited=1"
+    # Срок пуст — событию некуда встать: карточка сохранена, событие пропущено
+    if data.due_date is None:
+        return RedirectResponse(
+            f"{gcal_url}&gcal=no_date", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    try:
+        event = await run_in_threadpool(
+            google_calendar.create_task_event,
+            data.title,
+            data.due_date,
+            goog_cal_time,
+            data.contact,
+            data.description,
+        )
+    except google_calendar.GoogleCalendarError as exc:
+        logger.warning("Событие карточки «%s» не создано: %s", data.title, exc)
+        return RedirectResponse(
+            f"{gcal_url}&gcal=failed", status_code=status.HTTP_303_SEE_OTHER
+        )
+
+    logger.info("Событие карточки «%s» создано: %s", data.title, event["html_link"])
+    return RedirectResponse(f"{gcal_url}&gcal=created", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/delete/{task_id}", response_class=HTMLResponse, response_model=None)

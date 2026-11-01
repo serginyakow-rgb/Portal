@@ -497,6 +497,40 @@
     }
   }
 
+  // Блок «Добавить в Google календарь» окна правки и его место в разметке.
+  // .gcal в styles.css задаёт display: grid, поэтому атрибут hidden блок
+  // не скрывает: у карточки со сроком он убирается из разметки и возвращается
+  // на прежнее место (окно правки одно на всю доску, .field--due из DOM
+  // не исчезает — sync.js перерисовывает только доску)
+  var editGcalBlock = document.querySelector("#task-edit-modal .gcal");
+  var editGcalPlace = editGcalBlock ? editGcalBlock.parentNode : null;
+
+  // Блок нужен только карточке без срока — он тот же, что в окне «Новая
+  // карточка». Отметка и время при показе сбрасываются: каждое открытие окна
+  // начинается с пустого чекбокса и времени по умолчанию (09:00)
+  function toggleEditGcal(hasDueDate) {
+    if (!editGcalBlock || !editGcalPlace) {
+      return;
+    }
+    if (hasDueDate) {
+      if (editGcalBlock.parentNode) {
+        editGcalPlace.removeChild(editGcalBlock);
+      }
+      return;
+    }
+    if (!editGcalBlock.parentNode) {
+      editGcalPlace.appendChild(editGcalBlock);
+    }
+    var check = editGcalBlock.querySelector('[name="GoogCal"]');
+    var time = editGcalBlock.querySelector('[name="GoogCalTime"]');
+    if (check) {
+      check.checked = false;
+    }
+    if (time) {
+      time.value = time.defaultValue;
+    }
+  }
+
   // Заполняет окно правки значениями карточки: JSON лежит в data-task ссылки
   // «Редактировать», адреса сохранения и удаления — рядом (data-task-form,
   // data-task-delete-url). Возвращает false, если данных нет: тогда ссылка
@@ -528,6 +562,10 @@
     if (fields.dueDate) {
       fields.dueDate.value = payload.due_date || "";
     }
+    // Карточка без срока: у «Срока» появляются поля Google Календаря — по ним
+    // кнопка «Сохранить изменения» создаст событие, как «Добавить карточку».
+    // У карточки со сроком блока нет: событие уже могло быть создано
+    toggleEditGcal(Boolean((payload.due_date || "").trim()));
     if (fields.description) {
       fields.description.value = payload.description || "";
     }

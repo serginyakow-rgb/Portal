@@ -1441,6 +1441,91 @@
    правки остаётся открытым, фокус возвращается в поле. `styles.css` тоже
    не менялся, версии статики не поднимались (правился только шаблон).
 
+60. Google Календарь в окне правки карточки «Задач» (01.11.2026): просьба
+   пользователя — у карточки без срока в окне «Редактирование карточки»
+   показывать блок «Добавить в Google календарь» и по «Сохранить изменения»
+   создавать событие так же, как окно «Новая карточка».
+   `app/templates/tasks/index.html` — окно правки передаёт `gcal_enabled=true`
+   (было `false`), сообщения доски собираются через `gcal_subject` и флаг
+   `edited` («Изменения сохранены, …» вместо «Карточка добавлена, …»),
+   `tasks.js?v=16` → `?v=17` (то же в `form.html`, `contacts.html`,
+   `trash.html`); `app/templates/tasks/_form_fields_main.html` — только
+   комментарии. `app/modules/tasks/routes.py` — `task_update` получил
+   `GoogCal`/`GoogCalTime` (`Form(alias=...)`, время по умолчанию
+   `DEFAULT_EVENT_TIME`) и после `update_task` повторяет путь `task_create`:
+   пустой срок — `&gcal=no_date`, иначе `create_task_event` в
+   `run_in_threadpool`, ошибка — `&gcal=failed`, успех — `&gcal=created`,
+   с отметкой — `&edited=1`; `_render_board`/`index_page` принимают `edited`.
+   `app/static/js/tasks.js` — `toggleEditGcal(hasDueDate)` (вызов из
+   `fillEditDialog`): `.gcal` убирается из разметки, если срок заполнен,
+   и возвращается последним потомком `.field--due` с пустой отметкой и
+   временем `09:00`, если срока нет; `hidden` не годится — `.gcal` в
+   `styles.css` задаёт `display: grid`.
+   Проверки: `py_compile routes.py`, `node --check tasks.js` — чисто; сервер
+   перезапущен; `%TEMP%\tasks_gcal_check.py` на живом портале — `edit-goog_cal`
+   и `edit-goog_cal_time` в разметке окна правки, `?v=17`; правка без отметки
+   календарь не трогает; с отметкой и пустым сроком — `gcal=no_date&edited=1`;
+   с отметкой и сроком — `gcal=created&edited=1` и событие «Проверка Google
+   Календаря (автотест)» реально создано (сверено `events().list` в календаре);
+   доска показала «Изменения сохранены, событие создано в Google Календаре.»;
+   тестовая карточка убрана в корзину и удалена. Логика скрипта проверена на
+   заглушках DOM: `%TEMP%\tasks_js_check.js` — 9 проверок, 0 сбоев.
+   Документация: `PROJECT_MAP.md` (§5.6), `activeContext.md`, этот файл.
+   В календаре осталось тестовое событие 05.11.2026 10:30 «Проверка Google
+   Календаря (автотест)» — карточку удалили окончательно, а событие при
+   удалении карточки не убирается (так же было и при создании).
+
+61. Меню трея из четырёх пунктов и сборка 1.1.0 (01.11.2026): просьба
+   пользователя — exe, который при запуске живёт в трее и даёт меню «Открыть
+   в браузере», «Адрес подключения для локальных ПК», «Открыть папку
+   с данными», «Выход». Решения пользователя: версия установщика `1.1.0`,
+   меню строго из четырёх пунктов, сборка «папка + установщик»
+   (`desktop/dist/Portal` + `desktop/output/Portal-Setup-1.1.0.exe`).
+   `desktop/launcher.py` — `create_tray_icon` собирает `Menu` из четырёх
+   `MenuItem` без разделителей: «Открыть в браузере» (`default=True`, он же
+   двойной щелчок), «Адрес подключения для локальных ПК: http://<IP>:<порт>»
+   (щелчок копирует адрес через `copy_to_clipboard` и показывает уведомление;
+   без сети пункт неактивен и пишет «сеть не найдена»), «Открыть папку
+   с данными» (`open_data_folder` → `app_dir()`), «Выход» (`quit_app` →
+   `icon.stop()`). Вместе с пунктами удалены их обработчики и константы:
+   `open_backups`, `open_log`, `allow_firewall`, `open_admin_console`,
+   `toggle_autostart`, `set_autostart`, `autostart_enabled`,
+   `autostart_command`, `AUTOSTART_VALUE`, `AUTOSTART_KEY`; `--create-admin`
+   и `run_create_admin` остались — их использует ярлык установщика. Docstring
+   модуля переписан: автозапуск включает установщик, разрешение брандмауэра
+   спрашивает Windows при первом запуске.
+   `desktop/build.py` — версия по умолчанию `1.1.0` (docstring и `--version`);
+   `desktop/portal.iss` — запасное `AppVersion "1.1.0"`.
+   Проверки кода: `py_compile desktop/launcher.py` — чисто;
+   `%TEMP%\tray_menu_check.py` — 17/17 (ровно четыре пункта, тексты совпадают,
+   адрес `http://192.168.1.72:8000` в пункте 2, копирование и уведомление,
+   папка данных = каталог программы, «Выход» останавливает значок).
+   Сборка: `desktop\build.py --version 1.1.0` → `desktop\dist\Portal`
+   (768 файлов, 168,6 МБ, `Portal.exe` 13 434 081 байт) и
+   `desktop\output\Portal-Setup-1.1.0.exe` (34 816 179 байт, SHA-256
+   `2de7c2e474a8fd9390cd201347bb407b695ff26a0d97ca53c4c3a0e2e49afb93`).
+   Прогон собранного `Portal.exe` (`--no-browser --port 8011`) на временной
+   копии `dist\Portal` — 16/16: `/auth/login` 200, `portal-desktop.json`
+   `{"port": 8011}`, `portal.db`, `.env` с `SECRET_KEY`, в журнале «Портал
+   слушает http://127.0.0.1:8011» и «Создана учётная запись нотариуса»,
+   `http://192.168.1.72:8011/auth/login` 200, вход `админ`/`111111` → 303 на
+   `/dashboard` с cookie `portal_token`, панель 200 с именем «Админ», в сборке
+   шаблоны и статика с `?v=17` (`tasks.js` 45 170 байт), после завершения порт
+   освобождён. Пункт «Выход» нажимает пользователь: его логика проверена
+   в `tray_menu_check.py` (журнал «Выход из портала» + `icon.stop()`).
+   Тест установщика (14:42): `Portal-Setup-1.1.0.exe` с `/VERYSILENT
+   /SUPPRESSMSGBOXES /NORESTART /DIR=%TEMP%\portal-install-110` и задачами по
+   умолчанию — код 0, `Portal.exe` 13 434 081 байт, 770 файлов,
+   `app\templates` 33, `app\static` 18, `scripts\create_admin.py`, `portal.ico`,
+   `unins000.exe`; автозапуск `HKCU\...\Run\NotaryPortal` =
+   `"...\portal-install-110\Portal.exe" --autostart`; группа меню «Портал
+   нотариальной конторы» с четырьмя ярлыками (портал, «создать
+   администратора», «Папка портала (база и копии)», деинсталлятор). Тихая
+   деинсталляция — код 0: каталог удалён, файлов не осталось, значение
+   автозапуска снято.
+   Документация: `README.md` (раздел «Установщик для Windows»),
+   `PROJECT_MAP.md` (§10, «Настольная сборка»), `activeContext.md`, этот файл.
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

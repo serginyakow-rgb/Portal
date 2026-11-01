@@ -11,9 +11,13 @@
 3. поднимает uvicorn с ``app.main:app`` в фоновом потоке;
 4. открывает страницу входа в браузере (кроме автозапуска и запуска
    установщиком);
-5. остаётся в трее: открыть портал, адреса для других компьютеров, папка
-   данных, резервные копии, журнал, создать администратора, включить
-   автозапуск, разрешить доступ по сети, выйти.
+5. остаётся в трее: меню из четырёх пунктов — «Открыть в браузере», адрес
+   для входа с локальных ПК (щелчок копирует его), «Открыть папку с данными»
+   и «Выход».
+
+Автозапуск при входе в Windows включает установщик (флажок в его окне),
+правило брандмауэра для входа с других компьютеров — запрос Windows при
+первом запуске; в меню трея этих пунктов нет.
 
 Журнал работы пишется в ``portal-desktop.log`` рядом с программой: в оконной
 сборке у процесса нет консоли, поэтому stdout и stderr перенаправляются в файл.
@@ -44,9 +48,6 @@ from pathlib import Path
 
 # Имя программы в системе: ярлыки, правило брандмауэра, ключ автозапуска
 APP_TITLE = "Портал нотариальной конторы"
-# Ключ автозапуска в HKCU\...\Run
-AUTOSTART_VALUE = "NotaryPortal"
-AUTOSTART_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 # Файл с портом работающего сервера: второй запуск открывает уже поднятый портал
 STATE_FILE_NAME = "portal-desktop.json"
 # Журнал настольного приложения
@@ -426,47 +427,6 @@ class PortalServer:
         logger.info("Сервер портала остановлен")
 
 
-def autostart_command() -> str:
-    """Команда автозапуска: тот же файл программы с ключом ``--autostart``."""
-    return f'"{sys.executable}" --autostart'
-
-
-def autostart_enabled() -> bool:
-    """Включён ли автозапуск портала при входе в Windows (ключ HKCU\\...\\Run)."""
-    import winreg
-
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_KEY) as key:
-            value, _ = winreg.QueryValueEx(key, AUTOSTART_VALUE)
-    except OSError:
-        return False
-    return isinstance(value, str) and value == autostart_command()
-
-
-def set_autostart(enabled: bool) -> None:
-    """Включает или выключает автозапуск портала при входе в Windows."""
-    import winreg
-
-    with winreg.CreateKeyEx(
-        winreg.HKEY_CURRENT_USER, AUTOSTART_KEY, 0, winreg.KEY_SET_VALUE
-    ) as key:
-        if enabled:
-            winreg.SetValueEx(key, AUTOSTART_VALUE, 0, winreg.REG_SZ, autostart_command())
-        else:
-            try:
-                winreg.DeleteValue(key, AUTOSTART_VALUE)
-            except FileNotFoundError:
-                pass
-    logger.info("Автозапуск при входе в Windows: %s", "включён" if enabled else "выключен")
-
-
-def toggle_autostart(icon=None, item=None) -> None:
-    """Пункт меню трея: переключает автозапуск и обновляет галочку."""
-    set_autostart(not autostart_enabled())
-    if icon is not None:
-        icon.update_menu()
-
-
 def open_path(path: Path) -> None:
     """Открывает папку или файл в проводнике Windows."""
     os.startfile(str(path))  # noqa: S606 — так открывается проводник
@@ -493,43 +453,6 @@ def copy_to_clipboard(text: str) -> bool:
 def open_data_folder(icon=None, item=None) -> None:
     """Пункт меню трея: папка с базой, копиями и настройками портала."""
     open_path(app_dir())
-
-
-def open_log(icon=None, item=None) -> None:
-    """Пункт меню трея: журнал работы портала."""
-    if not log_path().exists():
-        log_path().touch()
-    open_path(log_path())
-
-
-def allow_firewall(icon=None, item=None) -> None:
-    """Разрешает входящие подключения к порталу: пункт меню трея.
-
-    Портал слушает ``0.0.0.0``, то есть доступен с других компьютеров конторы,
-    но Windows блокирует входящие, пока для программы нет правила. Добавление
-    правила требует прав администратора, поэтому запускается через UAC.
-    """
-    port = _env_value("PORTAL_PORT") or str(DEFAULT_PORT)
-    rule = f'advfirewall firewall add rule name="{APP_TITLE}" dir=in action=allow protocol=TCP localport={port}'
-    result = ctypes.windll.shell32.ShellExecuteW(
-        None, "runas", "netsh.exe", rule, None, 1
-    )
-    if result <= 32:
-        logger.warning("Правило брандмауэра не добавлено, код %s", result)
-
-
-def open_admin_console() -> None:
-    """Запускает отдельный процесс в консольном режиме создания администратора.
-
-    Установленное приложение запускает само себя ключом ``--create-admin``;
-    при запуске из исходников — тот же файл через интерпретатор.
-    """
-    if getattr(sys, "frozen", False):
-        command = [sys.executable, "--create-admin"]
-    else:
-        command = [sys.executable, str(Path(__file__).resolve()), "--create-admin"]
-    creation = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
-    subprocess.Popen(command, creationflags=creation)
 
 
 def run_create_admin() -> int:
@@ -575,19 +498,20 @@ def build_icon() -> "Image.Image":
 
 
 def create_tray_icon(port: int):
-    """Значок в трее с меню управления порталом."""
+    """Значок в трее с меню из четырёх пунктов.
+
+    «Открыть в браузере» — страница входа на этом компьютере; «Адрес
+    подключения для локальных ПК» — строка с адресом, щелчок копирует его
+    в буфер обмена (меню трея Windows не даёт выделить текст); «Открыть папку
+    с данными» — база, резервные копии, настройки и журнал; «Выход» —
+    останавливает сервер и убирает значок.
+    """
     import pystray
     from pystray import Menu, MenuItem
 
     def reopen(icon=None, item=None) -> None:
         """Открывает страницу входа в браузере."""
         open_portal(port)
-
-    def open_backups(icon=None, item=None) -> None:
-        """Открывает папку резервных копий."""
-        folder = app_dir() / "backups"
-        folder.mkdir(parents=True, exist_ok=True)
-        open_path(folder)
 
     def quit_app(icon=None, item=None) -> None:
         """Останавливает сервер и убирает значок."""
@@ -610,34 +534,24 @@ def create_tray_icon(port: int):
 
     # Адрес в сети конторы: сотрудник набирает его на своём рабочем месте
     lan_url = lan_portal_url(port)
-    lan_items = (
-        [
-            MenuItem(
-                f"С других ПК: {lan_url}",
-                lambda icon, item: copy_lan(icon, item, lan_url),
-            )
-        ]
-        if lan_url
-        else [MenuItem("С других ПК: сеть не найдена", None, enabled=False)]
-    )
+    if lan_url:
+        lan_item = MenuItem(
+            f"Адрес подключения для локальных ПК: {lan_url}",
+            lambda icon, item: copy_lan(icon, item, lan_url),
+        )
+    else:
+        # Сети нет — пункт остаётся на месте, но неактивен
+        lan_item = MenuItem(
+            "Адрес подключения для локальных ПК: сеть не найдена",
+            None,
+            enabled=False,
+        )
 
+    # Меню строго из четырёх пунктов; двойной щелчок по значку — открыть портал
     menu = Menu(
-        MenuItem("Открыть портал", reopen, default=True),
-        MenuItem(f"Адрес: http://127.0.0.1:{port}", None, enabled=False),
-        *lan_items,
-        Menu.SEPARATOR,
-        MenuItem("Папка портала", open_data_folder),
-        MenuItem("Резервные копии", open_backups),
-        MenuItem("Журнал работы", open_log),
-        Menu.SEPARATOR,
-        MenuItem("Создать администратора…", lambda icon, item: open_admin_console()),
-        MenuItem(
-            "Запускать при входе в Windows",
-            toggle_autostart,
-            checked=lambda item: autostart_enabled(),
-        ),
-        MenuItem("Разрешить доступ по сети (брандмауэр)", allow_firewall),
-        Menu.SEPARATOR,
+        MenuItem("Открыть в браузере", reopen, default=True),
+        lan_item,
+        MenuItem("Открыть папку с данными", open_data_folder),
         MenuItem("Выход", quit_app),
     )
     title = f"{APP_TITLE}\n{portal_url(port)}"

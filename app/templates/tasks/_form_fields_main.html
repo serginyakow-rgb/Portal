@@ -21,13 +21,24 @@
 {% set field_id = field_prefix|default("") %}
 {% set form_card_type = card_type or default_card_type %}
 
+{# «Тип задачи» — шаблоны карточек из «Настроек» → «Шаблоны карточек для
+   раздела «Задачи»»: значение пункта = id шаблона, подпись = его название,
+   порядок — по алфавиту (tasks/routes.py: _card_type_options). Пункты
+   чек-листа выбранного шаблона показывает вторая часть полей
+   (_form_fields_extra.html), их перерисовывает js/tasks.js.
+   Шаблонов в настройках нет — вместо списка предупреждение, а сохранить
+   карточку нельзя (кнопка заблокирована, маршрут отвечает отказом). #}
 <div class="field">
   <label for="{{ field_id }}card_type">Тип задачи</label>
+  {% if card_types %}
   <select id="{{ field_id }}card_type" name="card_type" required data-task-type>
     {% for value, label in card_types.items() %}
     <option value="{{ value }}"{% if value == form_card_type %} selected{% endif %}>{{ label }}</option>
     {% endfor %}
   </select>
+  {% else %}
+  <p class="panel__hint">Добавьте хотя бы один шаблон</p>
+  {% endif %}
 </div>
 
 <div class="field">

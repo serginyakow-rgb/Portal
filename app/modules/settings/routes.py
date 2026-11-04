@@ -27,13 +27,22 @@ from app.modules.auth.service import (
     update_user,
 )
 from app.modules.google_calendar import service as google_calendar
-from app.modules.settings.models import InheritanceTariff
-from app.modules.settings.schemas import InheritanceTariffInput
+from app.modules.settings.models import CardTemplate, InheritanceTariff
+from app.modules.settings.schemas import (
+    MAX_TEMPLATE_CHECKS,
+    CardTemplateInput,
+    InheritanceTariffInput,
+)
 from app.modules.settings.service import (
+    create_card_template,
     create_inheritance_tariff,
+    delete_card_template,
     delete_inheritance_tariff,
+    get_card_template,
     get_inheritance_tariff,
+    list_card_templates,
     list_inheritance_tariffs,
+    update_card_template,
     update_inheritance_tariff,
 )
 
@@ -49,6 +58,7 @@ MENU_SETTINGS = "settings"
 SETTINGS_USERS = "users"
 SETTINGS_INHERITANCE_TARIFF = "inheritance_tariff"
 SETTINGS_GOOGLE_CALENDAR = "google_calendar"
+SETTINGS_CARD_TEMPLATES = "card_templates"
 
 # Адреса действий раздела «Связь с Google Календарём»
 GOOGLE_CALENDAR_URL = "/settings/google-calendar"
@@ -63,6 +73,10 @@ def _render_settings(
     edit_user: User | None = None,
     tariffs: list[InheritanceTariff] | None = None,
     edit_tariff: InheritanceTariff | None = None,
+    card_templates: list[CardTemplate] | None = None,
+    card_template_edit: CardTemplate | None = None,
+    card_template_draft: dict[str, Any] | None = None,
+    card_template_edit_draft: dict[str, Any] | None = None,
     error: str | None = None,
     created: bool = False,
     updated: bool = False,
@@ -88,6 +102,11 @@ def _render_settings(
         edit_user=edit_user,
         tariffs=tariffs or [],
         edit_tariff=edit_tariff,
+        card_templates=card_templates or [],
+        card_template_edit=card_template_edit,
+        card_template_draft=card_template_draft or {},
+        card_template_edit_draft=card_template_edit_draft or {},
+        max_template_checks=MAX_TEMPLATE_CHECKS,
         error=error,
         created=created,
         updated=updated,
@@ -166,6 +185,77 @@ async def _render_tariffs_section(
         deleted=deleted,
         status_code=status_code,
     )
+
+
+async def _render_card_templates_section(
+    request: Request,
+    db: AsyncSession,
+    user: User,
+    *,
+    card_template_edit: CardTemplate | None = None,
+    card_template_draft: dict[str, Any] | None = None,
+    card_template_edit_draft: dict[str, Any] | None = None,
+    error: str | None = None,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    status_code: int = status.HTTP_200_OK,
+) -> HTMLResponse:
+    """Рендерит раздел «Шаблоны карточек» с актуальным списком шаблонов.
+
+    ``card_template_edit`` — шаблон, окно «Редактирование шаблона» которого
+    открыто (его пункты показаны справа).
+    ``card_template_draft`` — введённые значения окна «Добавить шаблон»,
+    ``card_template_edit_draft`` — окна «Редактирование шаблона»: ими
+    заполняются окна, когда запись не прошла проверку схемы.
+    """
+    return _render_settings(
+        request,
+        user,
+        settings_section=SETTINGS_CARD_TEMPLATES,
+        card_templates=await list_card_templates(db),
+        card_template_edit=card_template_edit,
+        card_template_draft=card_template_draft,
+        card_template_edit_draft=card_template_edit_draft,
+        error=error,
+        created=created,
+        updated=updated,
+        deleted=deleted,
+        status_code=status_code,
+    )
+
+
+def _template_form_items(
+    checks_on: list[str] | None,
+    checks_text: list[str] | None,
+) -> tuple[list[str], list[str], list[str]]:
+    """Разбирает строки окна шаблона: пункты проверки, их номера и описания.
+
+    Строки окна идут парами: поле описания ``checks_text`` (всегда все десять,
+    в порядке строк) и чек-бокс ``checks_on`` со значением номера строки
+    («1»…«10»). Поэтому описание берётся по номеру отмеченного чек-бокса:
+    текст в строке без отметки не сохраняется, а сохранённые пункты идут
+    подряд — без «дыр» в нумерации. Шаблон без отмеченных пунктов разрешён.
+
+    Возвращает три списка: пункты по порядку строк, отмеченные номера строк
+    (чтобы вернуть окно с теми же отметками) и все описания (чтобы вернуть
+    введённые значения после ошибки проверки).
+    """
+    texts = list(checks_text or [])
+    checked = sorted(
+        {
+            str(int(item.strip()))
+            for item in (checks_on or [])
+            if item.strip().isdigit() and 1 <= int(item) <= MAX_TEMPLATE_CHECKS
+        },
+        key=int,
+    )
+    items = [
+        texts[int(number) - 1]
+        for number in checked
+        if int(number) - 1 < len(texts)
+    ]
+    return items, checked, texts
 
 
 @router.get("/settings", response_class=HTMLResponse, response_model=None)
@@ -479,6 +569,165 @@ async def settings_inheritance_tariff_delete(
     await delete_inheritance_tariff(db, target)
     return RedirectResponse(
         "/settings/inheritance-tariff?deleted=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/settings/card-templates", response_class=HTMLResponse, response_model=None)
+async def settings_card_templates_page(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    created: bool = False,
+    updated: bool = False,
+    deleted: bool = False,
+    edit: int | None = None,
+) -> HTMLResponse:
+    """Шаблоны карточек раздела «Задачи»: список шаблонов и окна раздела.
+
+    Список приходит из таблицы ``card_templates``; ``edit`` — идентификатор
+    шаблона, окно «Редактирование шаблона» которого открывается сразу после
+    загрузки страницы. Так работает ссылка «Изменить» без скрипта (со
+    скриптом окно заполняется и открывается без перезагрузки). Устаревшая
+    ссылка даёт сообщение об ошибке, как в справочнике тарифов.
+    Кнопка «Добавить» открывает окно «Добавить шаблон», запись сохраняет
+    ``settings_card_templates_create``.
+    """
+    template = await get_card_template(db, edit) if edit is not None else None
+    if edit is not None and template is None:
+        # Ссылка устарела: шаблон уже удалён
+        return await _render_card_templates_section(
+            request,
+            db,
+            user,
+            error="Шаблон для изменения не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return await _render_card_templates_section(
+        request,
+        db,
+        user,
+        card_template_edit=template,
+        created=created,
+        updated=updated,
+        deleted=deleted,
+    )
+
+
+@router.post("/settings/card-templates", response_class=HTMLResponse, response_model=None)
+async def settings_card_templates_create(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    title: Annotated[str, Form()] = "",
+    checks_on: Annotated[list[str] | None, Form()] = None,
+    checks_text: Annotated[list[str] | None, Form()] = None,
+) -> HTMLResponse | RedirectResponse:
+    """Сохраняет шаблон карточки из окна «Добавить шаблон».
+
+    Пункты собирает ``_template_form_items``: описание берётся только из
+    строки с отмеченным чек-боксом, поэтому сохранённые пункты идут подряд.
+    Шаблон без отмеченных пунктов разрешён.
+    """
+    items, checked, texts = _template_form_items(checks_on, checks_text)
+
+    try:
+        data = CardTemplateInput(title=title, checks=items)
+    except ValidationError as exc:
+        # Окно «Добавить шаблон» открывается заново с введёнными значениями
+        return await _render_card_templates_section(
+            request,
+            db,
+            user,
+            card_template_draft={"title": title, "checked": checked, "texts": texts},
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    await create_card_template(db, data)
+    return RedirectResponse(
+        "/settings/card-templates?created=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/card-templates/{template_id}/update",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_card_templates_update(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    template_id: int,
+    title: Annotated[str, Form()] = "",
+    checks_on: Annotated[list[str] | None, Form()] = None,
+    checks_text: Annotated[list[str] | None, Form()] = None,
+) -> HTMLResponse | RedirectResponse:
+    """Сохраняет правку шаблона из окна «Редактирование шаблона».
+
+    Форма та же, что у окна «Добавить шаблон»: название и десять строк
+    «чек-бокс + описание пункта». При ошибке проверки окно возвращается
+    открытым (``data-open-on-load``) с введёнными значениями.
+    """
+    target = await get_card_template(db, template_id)
+    if target is None:
+        return await _render_card_templates_section(
+            request,
+            db,
+            user,
+            error="Шаблон для изменения не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    items, checked, texts = _template_form_items(checks_on, checks_text)
+
+    try:
+        data = CardTemplateInput(title=title, checks=items)
+    except ValidationError as exc:
+        return await _render_card_templates_section(
+            request,
+            db,
+            user,
+            card_template_edit=target,
+            card_template_edit_draft={"title": title, "checked": checked, "texts": texts},
+            error=_validation_message(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    await update_card_template(db, target, data)
+    return RedirectResponse(
+        "/settings/card-templates?updated=1",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post(
+    "/settings/card-templates/{template_id}/delete",
+    response_class=HTMLResponse,
+    response_model=None,
+)
+async def settings_card_templates_delete(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: AdminUser,
+    template_id: int,
+) -> HTMLResponse | RedirectResponse:
+    """Удаляет шаблон карточки. Подтверждение спрашивает окно ``#template-confirm``."""
+    target = await get_card_template(db, template_id)
+    if target is None:
+        return await _render_card_templates_section(
+            request,
+            db,
+            user,
+            error="Шаблон для удаления не найден",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    await delete_card_template(db, target)
+    return RedirectResponse(
+        "/settings/card-templates?deleted=1",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

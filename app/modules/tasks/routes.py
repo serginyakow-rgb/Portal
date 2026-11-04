@@ -21,13 +21,11 @@ from app.modules.auth.dependencies import CurrentUser
 from app.modules.auth.models import User
 from app.modules.auth.service import list_users
 from app.modules.google_calendar import service as google_calendar
+from app.modules.settings import service as settings_service
 from app.modules.tasks.models import Contact
 from app.modules.tasks.schemas import (
     BoardState,
-    CARD_TYPE_CHECKLISTS,
-    CARD_TYPE_LABELS,
     ContactInput,
-    DEFAULT_CARD_TYPE,
     DEFAULT_STATUS,
     STATUS_CLASSES,
     STATUS_LABELS,
@@ -110,8 +108,47 @@ def _board_filters(assignee_id: int | None, query: str) -> str:
 
 
 def _checked_items(names: list[str] | None) -> dict[str, bool]:
-    """Отмеченные пункты чек-листа: чужие для типа пункты отбросит схема."""
+    """Отмеченные пункты чек-листа: чужие для шаблона пункты отбросит форма."""
     return {name: True for name in names or []}
+
+
+async def _card_type_options(
+    db: AsyncSession,
+) -> tuple[dict[str, str], dict[str, list[str]], str]:
+    """Пункты списка «Тип задачи» и наборы чек-боксов — из шаблонов карточек.
+
+    Шаблоны читает раздел «Настройки» → «Шаблоны карточек для раздела
+    «Задачи»» (`settings.service.list_card_templates` — сортировка по названию),
+    поэтому список «Тип задачи» идёт по алфавиту и совпадает с настройками.
+    Ключ словарей — id шаблона строкой: он же уходит в `Task.card_type`
+    (колонка `String(20)`, id любой длины помещается).
+
+    Возвращает ``(подписи, наборы пунктов, значение по умолчанию)``. По
+    умолчанию выбран первый шаблон по алфавиту — с него открываются окно
+    «Новая карточка» и страница /tasks/create. Пустой словарь подписей
+    означает, что шаблонов в настройках нет: карточку создать нельзя,
+    форма показывает предупреждение «Добавьте хотя бы один шаблон».
+    """
+    templates = await settings_service.list_card_templates(db)
+    labels = {str(template.id): template.title for template in templates}
+    checklists = {str(template.id): list(template.checks or []) for template in templates}
+    return labels, checklists, next(iter(labels), "")
+
+
+def _keep_checklist(
+    checked: dict[str, bool],
+    allowed: list[str] | None,
+) -> dict[str, bool]:
+    """Оставляет в чек-листе только пункты выбранного шаблона.
+
+    ``allowed is None`` — набор не найден (значение карточки старше списка
+    шаблонов): пункты не трогаем, встроенные типы разбирает схема `_TaskForm`.
+    Отметки пунктов, которых в шаблоне нет, теряются — как и раньше при
+    смене типа карточки.
+    """
+    if allowed is None:
+        return checked
+    return {name: bool(checked.get(name)) for name in allowed}
 
 
 async def _render_board(
@@ -153,6 +190,9 @@ async def _render_board(
     # при каждой отрисовке доски: контакты, добавленные в разделе
     # «Контакты», видны после её обновления.
     contacts = await list_contacts(db)
+    # Список «Тип задачи» и наборы чек-боксов обоих окон карточки — шаблоны
+    # из настроек (Настройки → «Шаблоны карточек для раздела «Задачи»»)
+    card_types, checklists, default_card_type = await _card_type_options(db)
     # Сколько задач закреплено за каждым сотрудником — для окна по шестерёнке.
     # Окно есть только у роли «Нотариус» (admin), поэтому и запрос нужен лишь ей.
     assignee_counts = await count_tasks_by_assignee(db) if user.role == "admin" else {}
@@ -175,9 +215,9 @@ async def _render_board(
         contacts=contacts,
         # Фильтры в адресе окна правки: после сохранения доска откроется с ними
         board_filters=_board_filters(assignee_id, query),
-        card_types=CARD_TYPE_LABELS,
-        checklists=CARD_TYPE_CHECKLISTS,
-        default_card_type=DEFAULT_CARD_TYPE,
+        card_types=card_types,
+        checklists=checklists,
+        default_card_type=default_card_type,
         # Блок «Добавить в Google календарь» в модальном окне: только при
         # настроенной связи (Настройки → Связь с Google Календарём)
         google_calendar_connected=google_calendar.is_connected(),
@@ -250,8 +290,9 @@ async def _render_contacts(
     )
 
 
-def _render_task_form(
+async def _render_task_form(
     request: Request,
+    db: AsyncSession,
     user: User,
     *,
     users: list[User],
@@ -261,7 +302,7 @@ def _render_task_form(
     due_date: str = "",
     description: str = "",
     assignee_id: int | None = None,
-    card_type: str = DEFAULT_CARD_TYPE,
+    card_type: str = "",
     checklist: dict[str, bool] | None = None,
     goog_cal: bool = False,
     goog_cal_time: str = google_calendar.DEFAULT_EVENT_TIME,
@@ -269,7 +310,15 @@ def _render_task_form(
     status_code: int = status.HTTP_200_OK,
     board_filters: str = "",
 ) -> HTMLResponse:
-    """Рендерит форму карточки: создание и правку."""
+    """Рендерит форму карточки: создание и правку.
+
+    Список «Тип задачи» и наборы чек-боксов берутся из шаблонов карточек
+    в настройках (`_card_type_options`) — те же, что у окон доски, поэтому
+    страница /tasks/create и /tasks/update/{id} показывает тот же список.
+    Пустой ``card_type`` означает «тип по умолчанию» — первый шаблон
+    по алфавиту, так открывается «Новая карточка».
+    """
+    card_types, checklists, default_card_type = await _card_type_options(db)
     items = checklist if checklist is not None else {}
     return render(
         request,
@@ -285,8 +334,9 @@ def _render_task_form(
         assignee_id=assignee_id,
         card_type=card_type,
         checklist=items,
-        card_types=CARD_TYPE_LABELS,
-        checklists=CARD_TYPE_CHECKLISTS,
+        card_types=card_types,
+        checklists=checklists,
+        default_card_type=default_card_type,
         status_labels=STATUS_LABELS,
         # Блок «Добавить в Google календарь» рядом со «Сроком» (см. _render_board).
         # Отметка и время возвращаются в форму, если карточку не удалось сохранить
@@ -454,9 +504,20 @@ async def task_create_form(
     user: CurrentUser,
     card_type: str = "",
 ) -> HTMLResponse:
-    """Форма новой карточки: тип можно задать заранее в адресе."""
-    kind = card_type if card_type in CARD_TYPE_LABELS else DEFAULT_CARD_TYPE
-    return _render_task_form(request, user, users=await list_users(db), card_type=kind)
+    """Форма новой карточки: тип можно задать заранее в адресе.
+
+    Тип — id шаблона карточки из настроек; неизвестное значение заменяется
+    первым шаблоном по алфавиту.
+    """
+    card_types, _, default_card_type = await _card_type_options(db)
+    kind = card_type if card_type in card_types else default_card_type
+    return await _render_task_form(
+        request,
+        db,
+        user,
+        users=await list_users(db),
+        card_type=kind,
+    )
 
 
 @router.post("/create", response_class=HTMLResponse, response_model=None)
@@ -483,20 +544,12 @@ async def task_create(
     а на доске появляется предупреждение.
     """
     users = await list_users(db)
-    checked = _checked_items(checklist)
-    try:
-        data = TaskCreate(
-            title=title,
-            contact=contact,
-            due_date=due_date,
-            description=description,
-            assignee_id=assignee_id,
-            card_type=card_type or DEFAULT_CARD_TYPE,
-            checklist=checked,
-        )
-    except ValidationError as exc:
-        return _render_task_form(
+    card_types, checklists, default_card_type = await _card_type_options(db)
+    # Шаблонов в настройках нет: список «Тип задачи» пуст, карточку не создаём
+    if not card_types:
+        return await _render_task_form(
             request,
+            db,
             user,
             users=users,
             title=title,
@@ -504,7 +557,39 @@ async def task_create(
             due_date=due_date,
             description=description,
             assignee_id=_to_int(assignee_id) or None,
-            card_type=card_type or DEFAULT_CARD_TYPE,
+            checklist=_checked_items(checklist),
+            goog_cal=bool(goog_cal),
+            goog_cal_time=goog_cal_time,
+            error="Добавьте хотя бы один шаблон",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Тип — id шаблона карточки; неизвестное значение заменяем типом
+    # по умолчанию, а в чек-листе оставляем только пункты этого шаблона
+    kind = card_type if card_type in card_types else default_card_type
+    checked = _keep_checklist(_checked_items(checklist), checklists.get(kind))
+    try:
+        data = TaskCreate(
+            title=title,
+            contact=contact,
+            due_date=due_date,
+            description=description,
+            assignee_id=assignee_id,
+            card_type=kind,
+            checklist=checked,
+        )
+    except ValidationError as exc:
+        return await _render_task_form(
+            request,
+            db,
+            user,
+            users=users,
+            title=title,
+            contact=contact,
+            due_date=due_date,
+            description=description,
+            assignee_id=_to_int(assignee_id) or None,
+            card_type=kind,
             checklist=checked,
             goog_cal=bool(goog_cal),
             goog_cal_time=goog_cal_time,
@@ -513,8 +598,9 @@ async def task_create(
         )
 
     if data.assignee_id is not None and all(item.id != data.assignee_id for item in users):
-        return _render_task_form(
+        return await _render_task_form(
             request,
+            db,
             user,
             users=users,
             title=title,
@@ -589,8 +675,9 @@ async def task_edit_form(
             error="Карточка не найдена",
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    return _render_task_form(
+    return await _render_task_form(
         request,
+        db,
         user,
         users=await list_users(db),
         task=task,
@@ -645,10 +732,21 @@ async def task_update(
         )
 
     users = await list_users(db)
+    card_types, checklists, default_card_type = await _card_type_options(db)
     # Фильтры доски из адреса (их передают окно правки и страница карточки):
     # после сохранения возвращаемся на доску с теми же фильтрами
     board_filters = _board_filters(_filter_assignee(assignee), q)
-    checked = _checked_items(checklist)
+    if card_types:
+        # Тип — id шаблона карточки; неизвестное значение (карточка старше
+        # списка шаблонов) заменяем типом по умолчанию, а в чек-листе
+        # оставляем только пункты выбранного шаблона
+        kind = card_type if card_type in card_types else default_card_type
+        checked = _keep_checklist(_checked_items(checklist), checklists.get(kind))
+    else:
+        # Шаблонов в настройках нет: список «Тип задачи» пуст, поэтому тип
+        # и чек-лист карточки оставляем как есть — иначе сохранение стёрло бы их
+        kind = task.card_type
+        checked = dict(task.checklist or {})
     try:
         data = TaskUpdate(
             title=title,
@@ -656,12 +754,13 @@ async def task_update(
             due_date=due_date,
             description=description,
             assignee_id=assignee_id,
-            card_type=card_type or DEFAULT_CARD_TYPE,
+            card_type=kind,
             checklist=checked,
         )
     except ValidationError as exc:
-        return _render_task_form(
+        return await _render_task_form(
             request,
+            db,
             user,
             users=users,
             task=await read_task(db, task_id),
@@ -670,7 +769,7 @@ async def task_update(
             due_date=due_date,
             description=description,
             assignee_id=_to_int(assignee_id) or None,
-            card_type=card_type or DEFAULT_CARD_TYPE,
+            card_type=kind,
             checklist=checked,
             board_filters=board_filters,
             error=_validation_message(exc),
@@ -678,8 +777,9 @@ async def task_update(
         )
 
     if data.assignee_id is not None and all(item.id != data.assignee_id for item in users):
-        return _render_task_form(
+        return await _render_task_form(
             request,
+            db,
             user,
             users=users,
             task=await read_task(db, task_id),

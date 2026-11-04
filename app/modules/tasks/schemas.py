@@ -14,18 +14,13 @@ MAX_CONTACT_NAME = 200
 MAX_CONTACT_PHONE = 50
 MAX_CONTACT_EMAIL = 120
 
-# Тип карточки: значение хранится в БД, подпись показывается на доске и в формах
-# Порядок словаря CARD_TYPE_LABELS = порядок пунктов в списке «Тип задачи»
-TaskCardType = Literal[
-    "gift",
-    "sale_minor",
-    "sale_other",
-    "inheritance",
-    "power_of_attorney",
-    "spouse_consent",
-    "other",
-]
+# Тип карточки: id шаблона из «Настроек» → «Шаблоны карточек для раздела
+# «Задачи»», записанный строкой. Подписи и пункты чек-листа форма берёт
+# из шаблона (routes._card_type_options), поэтому в схеме их нет.
+TaskCardType = str
 
+# Встроенные типы прежних версий: подписи нужны карточкам, созданным до
+# появления шаблонов в настройках (service.card_type_label)
 CARD_TYPE_LABELS: dict[str, str] = {
     "gift": "Договор дарения",
     "sale_minor": "Договор купли-продажи с несовершеннолетним",
@@ -36,9 +31,12 @@ CARD_TYPE_LABELS: dict[str, str] = {
     "other": "Иное",
 }
 
-# Чек-лист по типу карточки: порядок пунктов = порядок чекбоксов в форме.
-# Наборы попадают в разметку через data-task-checklists, поэтому в js/tasks.js
-# списка пунктов нет — он только перерисовывает чекбоксы при смене типа.
+# Чек-лист встроенных типов прежних версий: наборы нужны валидатору
+# keep_type_checklist у карточек, созданных до появления шаблонов.
+# Действующие наборы живут в шаблонах («Настройки» → «Шаблоны карточек для
+# раздела «Задачи»») и попадают в разметку через data-task-checklists —
+# список пунктов в js/tasks.js не дублируется, он только перерисовывает
+# чекбоксы при смене типа. Пункты шаблона фильтрует routes._keep_checklist.
 CARD_TYPE_CHECKLISTS: dict[str, tuple[str, ...]] = {
     "gift": (
         "Документы дарителя",
@@ -170,8 +168,15 @@ class _TaskForm(BaseModel):
 
     @model_validator(mode="after")
     def keep_type_checklist(self) -> Self:
-        """Оставляет в чек-листе только пункты выбранного типа карточки."""
-        allowed = CARD_TYPE_CHECKLISTS.get(self.card_type, ())
+        """Оставляет в чек-листе только пункты выбранного типа карточки.
+
+        Так разбираются встроенные типы прежних версий. Для типа-шаблона
+        набор пунктов лежит в БД, поэтому его проверяет маршрут
+        (routes._keep_checklist) — у схемы нет доступа к настройкам.
+        """
+        allowed = CARD_TYPE_CHECKLISTS.get(self.card_type)
+        if allowed is None:
+            return self
         self.checklist = {name: self.checklist.get(name, False) for name in allowed}
         return self
 

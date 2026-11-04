@@ -16,8 +16,9 @@
             placeholder="Детали по карточке: стороны, объект, договорённости">{{ description }}</textarea>
 </div>
 
-{# Пункты чек-листа зависят от типа карточки: наборы приходят из схемы
-   (CARD_TYPE_CHECKLISTS). При смене типа списки перерисовывает js/tasks.js. #}
+{# Пункты чек-листа зависят от типа карточки: наборы приходят из шаблонов
+   «Настроек» → «Шаблоны карточек для раздела «Задачи»» (routes.py:
+   _card_type_options). При смене типа списки перерисовывает js/tasks.js. #}
 <div class="field">
   <label>Чек-лист</label>
   <div class="checklist" data-task-checklist data-task-checklists="{{ checklists|tojson|forceescape }}">

@@ -1,0 +1,260 @@
+{# Раздел настроек «Шаблоны карточек для раздела «Задачи»: слева список
+   шаблонов из таблицы card_templates, справа описания пунктов выбранного.
+   Два окна разметки с одинаковыми полями (название шаблона и десять строк
+   «чек-бокс + описание пункта»):
+     — «Добавить шаблон» (#card-template-modal) открывает кнопка «Добавить»,
+       форма уходит на POST /settings/card-templates
+       (settings_card_templates_create);
+     — «Редактирование шаблона» (#card-template-edit-modal) открывает ссылка
+       «Изменить» в строке списка, форма — на POST
+       /settings/card-templates/{id}/update, кнопка «Удалить шаблон» —
+       на .../{id}/delete (settings_card_templates_update/-delete).
+   Сохраняются только строки с отмеченным чек-боксом, подряд, без «дыр»
+   в нумерации; текст в неотмеченной строке в базу не попадает. Чтение
+   и запись — app/modules/settings/service.py.
+   Ссылка «Изменить» несёт data-template (JSON названия и пунктов),
+   data-template-form и data-template-delete-url: js/card-templates.js
+   заполняет окно правки и открывает его без перезагрузки страницы. Без
+   скрипта та же ссылка — обычный переход на ?edit=<id>, и сервер отдаёт
+   окно уже заполненным сохранёнными данными.
+   Пункты шаблона видны и в правом столбце страницы: кнопка-глаз в строке
+   списка (data-template-view) показывает их без перезагрузки — скрипт
+   собирает список в блоке data-template-view-panel. Столбца «Пунктов»
+   в таблице нет: сколько пунктов у шаблона, видно по списку справа.
+   После ошибки проверки окно открывается заново: сервер передаёт введённые
+   значения в card_template_draft (добавление) или card_template_edit_draft
+   (правка), а скрипт видит data-open-on-load. #}
+{% from "_macros.html" import status_done, status_warn, icon_eye %}
+{% set templates_url = templates_url|default('/settings/card-templates') %}
+{% set max_checks = max_template_checks|default(10) %}
+
+{# Окно «Добавить шаблон»: введённые значения после ошибки проверки #}
+{% set create_draft = card_template_draft|default({}) %}
+{% set create_checked = create_draft.get('checked', [])|map('string')|list %}
+{% set create_texts = create_draft.get('texts', []) %}
+
+{# Окно «Редактирование шаблона»: шаблон, открытый на правку, и введённые
+   значения после ошибки проверки (если черновика нет — данные из базы) #}
+{% set edit_template = card_template_edit %}
+{% set edit_draft = card_template_edit_draft|default({}) %}
+{% set edit_texts = edit_draft.get('texts', []) %}
+{% set edit_title = edit_draft.get('title', edit_template.title if edit_template else '') %}
+{% set edit_lines = edit_texts if edit_texts else (edit_template.checks if edit_template else []) %}
+{% if edit_draft %}
+{% set edit_marks = edit_draft.get('checked', [])|map('string')|list %}
+{% elif edit_template %}
+{# Пункты шаблона занимают первые строки окна: пункт 1 — строка 1 #}
+{% set edit_marks = range(1, (edit_template.checks|length) + 1)|map('string')|list %}
+{% else %}
+{% set edit_marks = [] %}
+{% endif %}
+
+<section class="panel">
+  {# Сообщения о результате действий нотариуса: добавление, правка, удаление
+     и ошибка проверки #}
+  {% if created %}
+  {{ status_done("Шаблон добавлен: название и отмеченные пункты проверки сохранены.") }}
+  {% endif %}
+
+  {% if updated %}
+  {{ status_done("Изменения сохранены: название шаблона и пункты проверки обновлены.") }}
+  {% endif %}
+
+  {% if deleted %}
+  {{ status_done("Шаблон удалён.") }}
+  {% endif %}
+
+  {% if error %}
+  {{ status_warn(error) }}
+  {% endif %}
+
+  <div class="panel__head">
+    <h1 class="panel__title">Настройка шаблонов карточек для раздела «Задачи»</h1>
+    <span class="panel__hint">Шаблонов: {{ card_templates|length }} · до {{ max_checks }} пунктов в каждом</span>
+  </div>
+
+  {# Два столбца 2:1: список шаблонов слева, пункты выбранного справа #}
+  <div class="templates">
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Шаблон</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in card_templates %}
+          <tr>
+            <td>{{ item.title }}</td>
+            <td>
+              <div class="calc__row">
+                {# Глаз показывает пункты шаблона в правом столбце — та же
+                   кнопка-значок, что у «Задачи по сотрудникам» в «Задачах».
+                   JSON тот же, что у ссылки «Изменить»; без скрипта кнопка
+                   ничего не открывает, как и «Добавить» #}
+                <button class="btn btn--ghost btn--icon" type="button"
+                        data-template-view="{{ item.id }}"
+                        aria-label="Пункты шаблона «{{ item.title }}»"
+                        title="Пункты шаблона"
+                        data-template='{{ {"title": item.title, "checks": item.checks}|tojson|forceescape }}'>{{ icon_eye(16) }}</button>
+                {# «Изменить» открывает окно «Редактирование шаблона» заполненным
+                   сохранёнными данными: JSON шаблона и адреса сохранения
+                   и удаления читает js/card-templates.js. Без скрипта — обычный
+                   переход на ?edit=<id>, сервер отдаёт окно уже заполненным. #}
+                <a class="btn btn--ghost" href="{{ templates_url }}?edit={{ item.id }}"
+                   data-template-edit="{{ item.id }}"
+                   data-template-form="{{ templates_url }}/{{ item.id }}/update"
+                   data-template-delete-url="{{ templates_url }}/{{ item.id }}/delete"
+                   data-template='{{ {"title": item.title, "checks": item.checks}|tojson|forceescape }}'>Изменить</a>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="2" class="panel__hint">Шаблонов пока нет — добавьте первый кнопкой ниже.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="table-wrap">
+      {# data-template-view-panel — цель кнопки-глаза: js/card-templates.js
+         подменяет содержимое блока пунктами выбранного шаблона #}
+      <div class="calc__form" data-template-view-panel>
+        {% if edit_template %}
+        <div class="field">
+          <label>{{ edit_template.title }}</label>
+          <div class="checklist">
+            {% for line in edit_template.checks %}
+            <label class="checklist__item">
+              <input type="checkbox" checked disabled>
+              <span>{{ line }}</span>
+            </label>
+            {% else %}
+            <span class="panel__hint">Отмеченных пунктов у шаблона нет</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <p class="panel__hint">Нажмите значок глаза в списке слева — здесь появятся пункты выбранного шаблона.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="calc__row">
+    <button class="btn btn--primary" type="button" data-modal-open="card-template-modal">Добавить</button>
+    <span class="panel__hint">В шаблон попадают только строки с отмеченным чек-боксом</span>
+  </div>
+</section>
+
+{# Окно «Добавить шаблон»: название и десять строк «чек-бокс + описание пункта».
+   Имена полей: checks_text — описание (отправляются все десять, в порядке
+   строк), checks_on — номер строки у отмеченного чек-бокса, поэтому маршрут
+   сопоставляет их по номеру. Общее название над полями — «Описание пункта
+   для проверки». Закрывают «Отмена», Escape и клик по подложке
+   (js/card-templates.js); без скрипта кнопка «Добавить» окно не открывает. #}
+<dialog class="modal" id="card-template-modal" aria-labelledby="card-template-modal-title"{% if create_draft %} data-open-on-load{% endif %}>
+  <form class="calc__form" method="post" action="{{ templates_url }}">
+    <div class="panel__head">
+      <h2 class="panel__title" id="card-template-modal-title">Добавить шаблон</h2>
+    </div>
+
+    {# Название шаблона: подписи над полем нет — роль подсказки играет сам
+       placeholder («Введите название шаблона»). aria-label оставляет поле
+       понятным для скринридеров, id нужен js/card-templates.js для фокуса. #}
+    <div class="field">
+      <input id="template-title" name="title" type="text" required autocomplete="off"
+             aria-label="Название шаблона" placeholder="Введите название шаблона"
+             value="{{ create_draft.get('title', '') }}">
+    </div>
+
+    {# Слева чек-бокс, справа описание пункта; строки идут друг над другом #}
+    <div class="field">
+      <label>Описание пункта для проверки</label>
+      <div class="checklist">
+        {% for index in range(1, max_checks + 1) %}
+        <div class="checklist__item checklist__item--input">
+          <input type="checkbox" name="checks_on" value="{{ index }}"
+                 aria-label="Пункт {{ index }}: сохранить описание"{% if index|string in create_checked %} checked{% endif %}>
+          <input type="text" name="checks_text" autocomplete="off"
+                 aria-label="Описание пункта {{ index }}" placeholder="Например: Документы дарителя"{% if create_texts|length >= index %} value="{{ create_texts[index - 1] }}"{% endif %}>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Добавить шаблон</button>
+      <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+      <span class="panel__hint">Без отметки строка не сохраняется</span>
+    </div>
+  </form>
+</dialog>
+
+{# Окно «Редактирование шаблона»: поля те же, что у окна «Добавить шаблон»,
+   и те же размеры, но значения подставлены сохранёнными данными шаблона.
+   Заполняет его сервер (переход по ?edit=<id> и возврат после ошибки
+   проверки — тогда окно открывается сразу, data-open-on-load) или
+   js/card-templates.js по data-template ссылки «Изменить».
+   Кнопки как в окне «Редактирование карточки» раздела «Задачи»:
+   «Сохранить изменения» (btn--primary), «Отмена» (btn--ghost)
+   и «Удалить шаблон» (btn btn--ghost btn--danger). Удаление отправляет
+   эту же форму на адрес из formaction, подтверждение спрашивает окно
+   #template-confirm. #}
+<dialog class="modal" id="card-template-edit-modal" aria-labelledby="card-template-edit-title"{% if edit_template %} data-open-on-load{% endif %}>
+  <form class="calc__form" method="post" action="{% if edit_template %}{{ templates_url }}/{{ edit_template.id }}/update{% endif %}">
+    <div class="panel__head">
+      <h2 class="panel__title" id="card-template-edit-title">Редактирование шаблона</h2>
+    </div>
+
+    {# Название шаблона: как в окне добавления — без подписи, с aria-label #}
+    <div class="field">
+      <input id="template-edit-title" name="title" type="text" required autocomplete="off"
+             aria-label="Название шаблона" placeholder="Введите название шаблона"
+             value="{{ edit_title }}">
+    </div>
+
+    <div class="field">
+      <label>Описание пункта для проверки</label>
+      <div class="checklist">
+        {% for index in range(1, max_checks + 1) %}
+        <div class="checklist__item checklist__item--input">
+          <input type="checkbox" name="checks_on" value="{{ index }}"
+                 aria-label="Пункт {{ index }}: сохранить описание"{% if index|string in edit_marks %} checked{% endif %}>
+          <input type="text" name="checks_text" autocomplete="off"
+                 aria-label="Описание пункта {{ index }}" placeholder="Например: Документы дарителя"{% if edit_lines|length >= index %} value="{{ edit_lines[index - 1] }}"{% endif %}>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="calc__row">
+      <button class="btn btn--primary" type="submit">Сохранить изменения</button>
+      <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+      {# formnovalidate: пустое название не мешает удалить шаблон; адрес
+         удаления ставит js/card-templates.js из data-template-delete-url #}
+      <button class="btn btn--ghost btn--danger" type="submit"
+              formaction="{% if edit_template %}{{ templates_url }}/{{ edit_template.id }}/delete{% endif %}"
+              formnovalidate data-template-remove
+              data-confirm="Удалить шаблон{% if edit_template %} «{{ edit_template.title }}»{% endif %}?">Удалить шаблон</button>
+    </div>
+  </form>
+</dialog>
+
+{# Окно подтверждения удаления шаблона — своё, а не window.confirm(): у браузерного
+   окна сверху печатается служебная строка «Подтвердите действие на сайте».
+   Показывает его js/card-templates.js для форм с data-confirm; кнопки те же,
+   что в окне подтверждения раздела «Задачи»: «Отмена» (btn--ghost) и «Удалить»
+   (btn btn--ghost btn--danger). #}
+<dialog class="modal modal--confirm" id="template-confirm" aria-label="Подтверждение удаления шаблона">
+  <p class="card__title" data-template-confirm-text></p>
+  <div class="calc__row">
+    {# Первой в фокусе «Отмена»: удаление не начнётся по случайному Enter #}
+    <button class="btn btn--ghost" type="button" data-template-confirm-cancel>Отмена</button>
+    <button class="btn btn--ghost btn--danger" type="button" data-template-confirm-accept>Удалить</button>
+  </div>
+</dialog>
+

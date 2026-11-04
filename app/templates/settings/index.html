@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon_users, icon_archive, icon_percent, icon_calendar %}
+{% from "_macros.html" import icon_users, icon_archive, icon_percent, icon_calendar, icon_copy %}
 
 {% block title %}Настройки · Нотариальная контора{% endblock %}
 
@@ -39,6 +39,13 @@
         </button>
       </form>
 
+      <form method="get" action="/settings/card-templates">
+        <button class="menu__item {% if settings_section == 'card_templates' %}is-active{% endif %}" type="submit" title="Шаблоны карточек для раздела «Задачи»">
+          {{ icon_copy(20) }}
+          <span class="menu__text">Шаблоны карточек для раздела «Задачи»</span>
+        </button>
+      </form>
+
       <form method="get" action="/settings/google-calendar">
         <button class="menu__item {% if settings_section == 'google_calendar' %}is-active{% endif %}" type="submit" title="Связь с Google Календарём">
           {{ icon_calendar(20) }}
@@ -55,6 +62,8 @@
     {% include "_backup_panel.html" %}
     {% elif settings_section == 'inheritance_tariff' %}
     {% include "_inheritance_tariff_panel.html" %}
+    {% elif settings_section == 'card_templates' %}
+    {% include "_card_templates_panel.html" %}
     {% elif settings_section == 'google_calendar' %}
     {% include "_google_calendar_panel.html" %}
     {% else %}
@@ -74,5 +83,10 @@
 {# Подтверждение восстановления копии: своё окно вместо window.confirm() #}
 {% if settings_section == 'backup' %}
 <script src="{{ url_for('static', path='js/backup.js') }}?v=1"></script>
+{% endif %}
+{# Окна раздела «Шаблоны карточек»: добавление, редактирование и подтверждение
+   удаления — только разделу «Шаблоны карточек для раздела «Задачи» #}
+{% if settings_section == 'card_templates' %}
+<script src="{{ url_for('static', path='js/card-templates.js') }}?v=3"></script>
 {% endif %}
 {% endblock %}

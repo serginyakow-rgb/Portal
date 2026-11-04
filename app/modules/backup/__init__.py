@@ -9,5 +9,6 @@
 """
 from app.modules.backup.sections import register_sections
 
-# Разделы портала: users, inheritance, templates_db, tasks, google_calendar
+# Разделы портала: users, inheritance, card_templates, templates_db, tasks,
+# contacts, google_calendar
 register_sections()

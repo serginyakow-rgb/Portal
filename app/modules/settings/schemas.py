@@ -1,10 +1,14 @@
-"""Схемы (Pydantic) модуля «Настройки»: справочник региональных тарифов."""
+"""Схемы (Pydantic) модуля «Настройки»: тарифы и шаблоны карточек «Задач»."""
 from typing import Any
 
 from pydantic import BaseModel, field_validator
 
 # Границы поля «Вид имущества»
 MAX_ASSET_TYPE = 200
+
+# Шаблон карточки раздела «Задачи»: длина названия и число пунктов проверки
+MAX_TEMPLATE_TITLE = 200
+MAX_TEMPLATE_CHECKS = 10
 
 
 class InheritanceTariffInput(BaseModel):
@@ -45,3 +49,40 @@ class InheritanceTariffInput(BaseModel):
         if value <= 0:
             raise ValueError("Региональный тариф должен быть больше 0")
         return value
+
+
+class CardTemplateInput(BaseModel):
+    """Данные окна «Добавить шаблон»: название и описания отмеченных пунктов.
+
+    Пункты приходят уже отобранными: маршрут берёт описание только из тех
+    строк формы, где стоит чек-бокс, поэтому неотмеченные поля сюда
+    не попадают. Пустой список разрешён — шаблон может быть без пунктов.
+    """
+
+    title: str = ""
+    checks: list[str] = []
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        """Схлопывает пробелы и требует непустое название шаблона."""
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("Название шаблона обязательно")
+        if len(cleaned) > MAX_TEMPLATE_TITLE:
+            raise ValueError(
+                f"Название шаблона слишком длинное (максимум {MAX_TEMPLATE_TITLE} символов)"
+            )
+        return cleaned
+
+    @field_validator("checks")
+    @classmethod
+    def validate_checks(cls, value: list[str]) -> list[str]:
+        """Схлопывает пробелы, выбрасывает пустые описания и держит предел в 10."""
+        cleaned = [" ".join(item.split()) for item in value]
+        cleaned = [item for item in cleaned if item]
+        if len(cleaned) > MAX_TEMPLATE_CHECKS:
+            raise ValueError(
+                f"Пунктов проверки слишком много (максимум {MAX_TEMPLATE_CHECKS})"
+            )
+        return cleaned

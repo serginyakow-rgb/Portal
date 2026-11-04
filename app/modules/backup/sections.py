@@ -10,10 +10,12 @@
 
 1. ``users`` — сотрудники, на них ссылаются заготовки и карточки;
 2. ``inheritance`` — справочник региональных тарифов;
-3. ``templates_db`` — разделы, теги, заготовки и связи «заготовка — тег»;
-4. ``tasks`` — карточки доски, включая корзину (``deleted_at``);
-5. ``contacts`` — справочник контактов конторы (кнопка «Контакты» в «Задачах»);
-6. ``google_calendar`` — файлы ключа и токена: пишутся после фиксации БД.
+3. ``card_templates`` — шаблоны карточек «Задач»: справочник настроек,
+   внешних ключей нет, поэтому стоит рядом с региональными тарифами;
+4. ``templates_db`` — разделы, теги, заготовки и связи «заготовка — тег»;
+5. ``tasks`` — карточки доски, включая корзину (``deleted_at``);
+6. ``contacts`` — справочник контактов конторы (кнопка «Контакты» в «Задачах»);
+7. ``google_calendar`` — файлы ключа и токена: пишутся после фиксации БД.
 
 Пароли пользователей в копию попадают только по флагу «Включить открытые
 пароли»: без него в файле нет ни ``hashed_password``, ни ``password_plain``.
@@ -35,13 +37,14 @@ from app.modules.auth.schemas import name_key
 from app.modules.backup import registry
 from app.modules.backup.registry import BackupSection, BackupValidationError
 from app.modules.google_calendar import service as google_calendar
-from app.modules.settings.models import InheritanceTariff
+from app.modules.settings.models import CardTemplate, InheritanceTariff
 from app.modules.tasks.models import Contact, Task
 from app.modules.templates_db.models import Section, Tag, TemplateBlock, block_tags
 
 # Подписи разделов: попадают в сообщения нотариусу и в отчёт
 TITLE_USERS = "Пользователи"
 TITLE_INHERITANCE = "Региональные тарифы"
+TITLE_CARD_TEMPLATES = "Шаблоны карточек («Задачи»)"
 TITLE_TEMPLATES_DB = "База данных (разделы, теги, заготовки)"
 TITLE_TASKS = "Задачи"
 TITLE_CONTACTS = "Контакты"
@@ -327,6 +330,75 @@ async def _import_inheritance(db: AsyncSession, payload: dict[str, Any]) -> None
         )
 
 
+# ── Шаблоны карточек для раздела «Задачи» ──────────────────────────────────
+
+
+async def _export_card_templates(db: AsyncSession) -> dict[str, Any]:
+    """Шаблоны карточек: название и пункты проверки по порядку.
+
+    Порядок строк — по ``id``, как у остальных разделов: алфавитный список
+    на странице настроек (``list_card_templates()``) — оформление страницы,
+    а не свойство данных.
+    """
+    result = await db.execute(select(CardTemplate).order_by(CardTemplate.id))
+    rows = [
+        {
+            "id": item.id,
+            "title": item.title,
+            "checks": list(item.checks or []),
+            "created_at": _iso(item.created_at),
+        }
+        for item in result.scalars().all()
+    ]
+    return {"rows": rows}
+
+
+async def _clear_card_templates(db: AsyncSession) -> None:
+    """Удаляет все шаблоны карточек перед восстановлением."""
+    await db.execute(delete(CardTemplate))
+
+
+def _checks_list(
+    row: dict[str, Any], field_name: str, title: str, index: int
+) -> list[str]:
+    """Пункты проверки шаблона: список непустых строк, порядок сохраняется.
+
+    Пробелы схлопываются, как в схеме ввода (``CardTemplateInput``): в базе
+    таких значений быть не может, а из чужого файла они появиться не должны.
+    Пустые описания выбрасываются, предел в 10 пунктов не проверяется —
+    это ограничение формы ввода, а не базы: отказ из-за него не должен
+    мешать нотариусу восстановить копию.
+    """
+    value = row.get(field_name)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise _field_error(title, index, field_name)
+    checks: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise _field_error(title, index, field_name)
+        cleaned = " ".join(item.split())
+        if cleaned:
+            checks.append(cleaned)
+    return checks
+
+
+async def _import_card_templates(db: AsyncSession, payload: dict[str, Any]) -> None:
+    """Восстанавливает шаблоны карточек, сохраняя id и порядок пунктов."""
+    title = TITLE_CARD_TEMPLATES
+    for index, row in enumerate(_require_rows(payload, title), start=1):
+        db.add(
+            CardTemplate(
+                id=_require_int(row, "id", title, index),
+                title=_require_str(row, "title", title, index),
+                checks=_checks_list(row, "checks", title, index),
+                created_at=_optional_datetime(row, "created_at", title, index)
+                or _utc_now(),
+            )
+        )
+
+
 # ── База заготовок: разделы, теги, заготовки, связи ────────────────────────
 
 
@@ -607,6 +679,14 @@ SECTIONS: tuple[BackupSection, ...] = (
         export=_export_inheritance,
         import_=_import_inheritance,
         clear=_clear_inheritance,
+    ),
+    BackupSection(
+        key="card_templates",
+        title=TITLE_CARD_TEMPLATES,
+        order=25,
+        export=_export_card_templates,
+        import_=_import_card_templates,
+        clear=_clear_card_templates,
     ),
     BackupSection(
         key="templates_db",

@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.core.sync import revision
 from app.modules.tasks.models import Contact, Task, now_utc
@@ -261,8 +262,13 @@ async def list_board(
     Фильтр по исполнителю показывает карточки выбранного сотрудника вместе
     с карточками без исполнителя: «ничьи» карточки остаются видны в списке
     любого сотрудника, иначе после выбора фильтра они терялись бы с доски.
+
+    Автор карточки (``Task.author``) в разметку доски не попадает, поэтому
+    связь не загружается (``noload``): иначе каждая карточка тянула бы второй
+    LEFT JOIN к ``users``, а на доске их сотни. Исполнитель нужен — его имя
+    и цвет стоят в карточке (``_to_list_item``).
     """
-    stmt = select(Task).where(Task.deleted_at.is_(None))
+    stmt = select(Task).options(noload(Task.author)).where(Task.deleted_at.is_(None))
     if assignee_id is not None:
         # Карточки сотрудника и карточки без исполнителя (assignee_id IS NULL):
         # «ничьи» карточки видны в списке любого сотрудника

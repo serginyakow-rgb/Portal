@@ -6,7 +6,17 @@
 """
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,6 +37,17 @@ class Task(Base):
     """Карточка задачи: общие поля, чек-лист по типу и место на доске."""
 
     __tablename__ = "tasks"
+    # Составные индексы под запросы доски и корзины: все они начинаются
+    # с «не удалено» (deleted_at IS NULL), дальше столбец или срок.
+    # ix_tasks_board закрывает выборку столбца (WHERE status = ? ORDER BY
+    # position, id) и поиск свободной позиции в его конце (MAX(position)):
+    # без него SQLite строил временное B-дерево для сортировки.
+    # ix_tasks_due — порядок карточек по сроку (ORDER BY due_date) и значок
+    # «срок истекает» в меню (WHERE due_date <= …).
+    __table_args__ = (
+        Index("ix_tasks_board", "deleted_at", "status", "position"),
+        Index("ix_tasks_due", "deleted_at", "due_date"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)

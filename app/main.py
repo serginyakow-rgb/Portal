@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.gzip import GZipMiddleware
 
 from app.core.config import get_settings
 from app.core.database import async_session_maker, engine
@@ -71,6 +72,20 @@ async def _prepare_backup_dir() -> None:
         logger.warning("Папка резервных копий %s недоступна: %s", directory, exc)
 
 
+async def _ensure_indexes() -> None:
+    """Создаёт недостающие индексы у уже существующих таблиц.
+
+    ``create_all`` создаёт индексы только вместе с новой таблицей, а таблицу,
+    которая уже есть в базе (portal.db на сервере конторы), он пропускает.
+    Поэтому индексы, добавленные в модели позже, досоздаются отдельно:
+    ``checkfirst=True`` пропускает уже созданные, то есть запуск повторяем.
+    """
+    async with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                await conn.run_sync(index.create, checkfirst=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Создаёт таблицы БД и папку копий при старте, освобождает движок при остановке."""
@@ -78,6 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await _prepare_backup_dir()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_indexes()
     yield
     await engine.dispose()
 
@@ -103,6 +119,11 @@ app.mount("/static", NoCacheStaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
 
 
+# Маршруты без левого меню: метка им не нужна, а фрагмент доски запрашивается
+# раз в 5 секунд каждым открытым экраном
+BADGE_SKIP_PATHS = frozenset({"/tasks/board"})
+
+
 @app.middleware("http")
 async def tasks_menu_badge(
     request: Request,
@@ -112,17 +133,33 @@ async def tasks_menu_badge(
 
     Меню общее для всех страниц, поэтому числа нужны не только в разделе
     «Задачи». Значение кладётся в request.state, откуда его забирает render()
-    (core/templating.py); по умолчанию — None, метки нет: так страница входа
-    и статика остаются без лишних запросов к БД. Сессия закрывается до
-    call_next, чтобы не держать два соединения к SQLite одновременно.
+    (core/templating.py); по умолчанию — None, метки нет: так страница входа,
+    статика и фрагменты без меню остаются без лишних запросов к БД. Сессия
+    закрывается до call_next, чтобы не держать два соединения к SQLite
+    одновременно.
     """
     request.state.tasks_badge = None
-    if request.method == "GET" and not request.url.path.startswith("/static"):
+    if (
+        request.method == "GET"
+        and not request.url.path.startswith("/static")
+        and request.url.path not in BADGE_SKIP_PATHS
+    ):
         async with async_session_maker() as db:
             user = await get_optional_user(request, db)
             if user is not None:
                 request.state.tasks_badge = await count_menu_badge(db, user.id)
     return await call_next(request)
+
+
+# Сжатие ответов: доска на 2000 карточек уезжает как 100 КБ вместо 5.7 МБ,
+# страница «База данных» — 32 КБ вместо 278 КБ, styles.css — 18 КБ вместо 72 КБ.
+# Добавляется последним, поэтому оказывается внешним слоем и сжимает в том числе
+# ответы /static.
+# minimum_size при нынешнем устройстве мелкие ответы не отсекает: метка меню —
+# BaseHTTPMiddleware, её тело приходит чанками, а такие ответы сжимаются всегда
+# (/tasks/state: 104 → 101 байт). Параметр оставлен на случай, если метку
+# перепишут на чистом ASGI.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
 app.include_router(auth_router)

@@ -30,7 +30,9 @@
     {% include "tasks/_form_fields_extra.html" %}
 
     <div class="calc__row">
-      <button class="btn btn--primary" type="submit">
+      {# Шаблонов в настройках нет — список «Тип задачи» пуст, новую карточку
+         не создать: кнопка заблокирована (правку существующей это не касается) #}
+      <button class="btn btn--primary" type="submit"{% if not task and not card_types %} disabled{% endif %}>
         {% if task %}Сохранить изменения{% else %}Добавить карточку{% endif %}
       </button>
       <a class="btn btn--ghost" href="/tasks/" title="Вернуться без сохранения">Отмена</a>
@@ -53,5 +55,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=17"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=18"></script>
 {% endblock %}

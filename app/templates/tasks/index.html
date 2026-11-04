@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon_plus, icon_edit,
                                status_done, status_warn, icon_due_alert,
-                               icon_eye, icon_trash, icon_contacts %}
+                               icon_eye, icon_trash, icon_contacts, icon_refresh %}
 
 {% block title %}Задачи · Нотариальная контора{% endblock %}
 
@@ -38,18 +38,28 @@
       <label for="search">Поиск</label>
       <input id="search" name="q" type="search" value="{{ query }}" autocomplete="off"
              placeholder="Заголовок, контакт, описание">
-      <button class="btn btn--primary" type="submit"
-              title="Обновить доску по выбранным фильтрам">Обновить</button>
-      <a class="btn btn--ghost" href="/tasks/" title="Очистить поиск и показать карточки текущего сотрудника">Сброс</a>
-      {# «Корзина» — значок вместо подписи: слово осталось в title и aria-label,
-         смысл кнопки не потерян. Значок в btn--icon сжимает кнопку до квадрата #}
-      <a class="btn btn--ghost btn--icon" href="/tasks/trash" aria-label="Корзина"
-         title="Удалённые карточки">{{ icon_trash(16) }}</a>
-      {# Справочник контактов конторы: стоит справа от «Корзины», у нотариуса —
-         перед «глазом». Доступен всем сотрудникам, как и сама доска. Подписи
-         нет, как у «Корзины»: слово осталось в title и aria-label #}
+      {# Порядок кнопок строки: «Сброс» → «Обновить» → «Контакты» → «Корзина»;
+         у нотариуса ряд замыкает «глаз». «Сброс» — та же синяя кнопка, что
+         «Новая карточка» (btn--primary). «Обновить» — значок вместо подписи,
+         по виду как «Контакты» (btn--ghost btn--icon): слово осталось
+         в title и aria-label #}
+      <a class="btn btn--primary" href="/tasks/" title="Очистить поиск и показать карточки текущего сотрудника">Сброс</a>
+      <button class="btn btn--ghost btn--icon" type="submit"
+              aria-label="Обновить" title="Обновить доску по выбранным фильтрам">{{ icon_refresh(16) }}</button>
+      {# Справочник контактов конторы: стоит перед «Корзиной» у всех сотрудников,
+         доступен всем, как и сама доска. Подписи нет, как у «Корзины»: слово
+         осталось в title и aria-label #}
       <a class="btn btn--ghost btn--icon" href="/tasks/contacts" aria-label="Контакты"
          title="Контакты: имена, телефоны и почта">{{ icon_contacts(16) }}</a>
+      {# «Корзина» — значок вместо подписи: слово осталось в title и aria-label,
+         смысл кнопки не потерян. Кнопка вдвое шире значка (min-width в
+         styles.css), правило привязано к aria-label.
+         Кнопка — ещё и приёмник перетаскивания (data-trash-drop): если бросить
+         на неё карточку, та уходит в корзину без подтверждения (js/tasks.js,
+         блок «Корзина как приёмник»). Удаление обратимо — карточка ждёт
+         в корзине, откуда её можно вернуть #}
+      <a class="btn btn--ghost btn--icon" href="/tasks/trash" aria-label="Корзина"
+         data-trash-drop title="Удалённые карточки: перетащите карточку, чтобы убрать её в корзину">{{ icon_trash(16) }}</a>
       {# Глаз — только нотариусу (роль admin): окно со списком сотрудников
          и числом закреплённых за каждым задач. type="button" обязателен: внутри
          GET-формы фильтра обычная кнопка отправила бы её вместо открытия окна #}
@@ -122,7 +132,9 @@
       {% endwith %}
 
       <div class="calc__row">
-        <button class="btn btn--primary" type="submit">Добавить карточку</button>
+        {# Без шаблонов в настройках карточку не создать: список «Тип задачи»
+           пуст, кнопка заблокирована (предупреждение — в первой части полей) #}
+        <button class="btn btn--primary" type="submit"{% if not card_types %} disabled{% endif %}>Добавить карточку</button>
         <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
       </div>
     </div>
@@ -270,5 +282,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', path='js/sync.js') }}?v=1"></script>
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=17"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=18"></script>
 {% endblock %}

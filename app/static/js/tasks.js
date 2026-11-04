@@ -1,4 +1,5 @@
-/* Модуль «Задачи»: перетаскивание карточек между столбцами доски, модальные
+/* Модуль «Задачи»: перетаскивание карточек между столбцами доски и на кнопку
+   «Корзина» (бросок убирает карточку в корзину без подтверждения), модальные
    окна создания и правки карточки, подтверждение удаления и перерисовка
    чек-листа при смене типа карточки.
    Скрипт подключается на доске (tasks/index.html) и в форме карточки
@@ -329,6 +330,8 @@
       toArray(board.querySelectorAll("[data-board-cards]")).forEach(function (container) {
         container.classList.remove("is-over");
       });
+      // Подсветка кнопки «Корзина» гаснет и при отменённом перетаскивании
+      setTrashOver(false);
     });
 
     // Разрешаем бросок только над приёмником столбца: без preventDefault
@@ -377,6 +380,128 @@
       }
       event.preventDefault();
       moveCard(card, column, event.clientY);
+    });
+  }
+
+  /* ── Корзина как приёмник перетаскивания ───────────────────────────────── */
+
+  // Кнопка «Корзина» в шапке раздела (data-trash-drop): бросок карточки на неё
+  // убирает карточку в корзину без подтверждения — вернуть её можно со
+  // страницы корзины. Кнопка стоит вне [data-board], поэтому обработчики
+  // перетаскивания у неё свои: события доски сюда не всплывают
+  var trashDrop = document.querySelector("[data-trash-drop]");
+
+  // Возвращает опрос доски (sync.js, блок «Синхронизация» ниже): после удаления
+  // числа метки «Задачи» и окна «Задачи по сотрудникам» нужно переписать сразу,
+  // не дожидаясь следующего тика
+  var syncHandle = null;
+
+  // Подсветка кнопки, пока карточку держат над ней: класс is-over тот же, что
+  // подсвечивает столбцы доски
+  function setTrashOver(flag) {
+    if (trashDrop) {
+      trashDrop.classList.toggle("is-over", flag);
+    }
+  }
+
+  // Убирает карточку в корзину: POST на адрес из data-task-delete-url. Сервер
+  // отвечает перенаправлением на /tasks/?deleted=1 (303), fetch идёт по нему
+  // сам — поэтому успех узнаём по конечному адресу с deleted=1. Карточку
+  // снимаем сразу, счётчики столбцов пересчитывает refreshBoard, а числа
+  // в меню приходят следующим опросом (syncHandle.poll ниже).
+  // Подтверждения нет: удаление обратимо, карточка ждёт в корзине
+  function archiveCard(card) {
+    var url = card.getAttribute("data-task-delete-url") || "";
+    if (!url) {
+      return;
+    }
+    if (typeof window.fetch !== "function") {
+      // Скрипт без fetch — обычная отправка формы: страница перезагрузится,
+      // но карточка всё равно уйдёт в корзину
+      var fallback = document.createElement("form");
+      fallback.method = "post";
+      fallback.action = url;
+      document.body.appendChild(fallback);
+      fallback.submit();
+      return;
+    }
+    var controller = typeof window.AbortController === "function" ? new window.AbortController() : null;
+    var timer = controller
+      ? window.setTimeout(function () {
+          controller.abort();
+        }, MOVE_TIMEOUT)
+      : null;
+
+    window
+      .fetch(url, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller ? controller.signal : undefined
+      })
+      .then(function (response) {
+        // Ошибка, «карточка не найдена» или истёкшая сессия — повод показать
+        // доску как её видит сервер, а не угадывать состояние
+        if (!response.ok || response.url.indexOf("deleted=1") === -1) {
+          throw new Error("delete-failed-" + response.status);
+        }
+      })
+      .then(function () {
+        card.remove();
+        refreshBoard();
+        if (syncHandle) {
+          syncHandle.poll();
+        }
+      })
+      .catch(function () {
+        window.location.reload();
+      })
+      .then(function () {
+        if (timer) {
+          window.clearTimeout(timer);
+        }
+      });
+  }
+
+  if (board && trashDrop) {
+    // Разрешаем бросок над кнопкой: без preventDefault браузер считает ссылку
+    // недопустимой целью и событие drop не приходит
+    ["dragenter", "dragover"].forEach(function (name) {
+      trashDrop.addEventListener(name, function (event) {
+        if (!draggedCard) {
+          return;
+        }
+        event.preventDefault();
+        if (event.dataTransfer) {
+          event.dataTransfer.dropEffect = "move";
+        }
+        setTrashOver(true);
+      });
+    });
+
+    // Подсветку снимаем только при выходе за пределы кнопки, а не при
+    // переходе курсора на её значок внутри
+    trashDrop.addEventListener("dragleave", function (event) {
+      if (event.relatedTarget && trashDrop.contains(event.relatedTarget)) {
+        return;
+      }
+      setTrashOver(false);
+    });
+
+    // Бросок: карточка уходит в корзину без подтверждения. preventDefault
+    // отменяет переход по ссылке /tasks/trash, который браузер иначе сделал бы
+    // сам после drop
+    trashDrop.addEventListener("drop", function (event) {
+      var card = draggedCard;
+      draggedCard = null;
+      dragEndedAt = Date.now();
+      setTrashOver(false);
+      if (!card) {
+        return;
+      }
+      event.preventDefault();
+      card.classList.remove("is-dragging");
+      archiveCard(card);
     });
   }
 
@@ -630,6 +755,16 @@
       return;
     }
 
+    // Отпускание мыши после броска на «Корзину» — не щелчок по ссылке:
+    // иначе браузер открыл бы страницу корзины сразу после удаления
+    if (
+      closestElement(event.target, "[data-trash-drop]") &&
+      Date.now() - dragEndedAt < CLICK_AFTER_DRAG
+    ) {
+      event.preventDefault();
+      return;
+    }
+
     // Щелчок по карточке открывает окно «Редактирование карточки», а не
     // страницу /tasks/update/{id}: окно одно на всю доску, значения берутся
     // у самой карточки (data-task)
@@ -681,8 +816,9 @@
 
   /* ── Чек-лист карточки ────────────────────────────────────────────────── */
 
-  // Наборы пунктов приходят из схемы (CARD_TYPE_CHECKLISTS) через атрибут
-  // data-task-checklists: список пунктов в JavaScript не дублируется
+  // Наборы пунктов приходят из шаблонов карточек («Настройки» → «Шаблоны
+  // карточек для раздела «Задачи»») через атрибут data-task-checklists:
+  // список пунктов в JavaScript не дублируется
   function checklistSets(container) {
     var raw = container.getAttribute("data-task-checklists") || "{}";
     try {
@@ -704,8 +840,9 @@
     return checked;
   }
 
-  // Перерисовывает пункты под выбранный тип. Отметки, которых нет в новом
-  // наборе, отбрасываются — так же поступает схема TaskCreate на сервере
+  // Перерисовывает пункты под выбранный тип (id шаблона карточки). Отметки,
+  // которых нет в новом наборе, отбрасываются — так же поступает маршрут
+  // (routes.py: _keep_checklist) при сохранении карточки
   function renderChecklist(container, items, checked) {
     container.textContent = "";
     if (!items || items.length === 0) {
@@ -912,7 +1049,9 @@
       "?assignee=" + encodeURIComponent(board.getAttribute("data-board-assignee") || "") +
       "&q=" + encodeURIComponent(board.getAttribute("data-board-query") || "");
 
-    window.portalSync.watch({
+    // Опрос возвращает {poll}: им пользуется удаление перетаскиванием на
+    // «Корзину» (archiveCard), чтобы метка «Задачи» обновилась сразу
+    syncHandle = window.portalSync.watch({
       target: board,
       // Версию показанной разметки вывел сервер (data-board-version): с ней
       // сравнивается версия из /tasks/state

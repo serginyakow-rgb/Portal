@@ -19,7 +19,10 @@
    что откроется окно. Из кнопок на карточке осталось только
    копирование: «Открыть», «Редактировать» и «Удалить» переехали
    в окно правки. #}
+{# data-block-id — по нему кнопка «копировать» находит текст карточки:
+   второго экземпляра текста в разметке нет (js/templates_db.js) #}
 <article class="card"
+         data-block-id="{{ block.id }}"
          data-block-edit
          data-block-form="/templates-db/blocks/{{ block.id }}/edit"
          data-block-delete-url="/templates-db/blocks/{{ block.id }}/delete"
@@ -54,8 +57,5 @@
       </noscript>
     </div>
   </div>
-
-  {# Скрытый текст заготовки: источник для кнопки копирования #}
-  <div class="msg__bubble" hidden id="block-body-{{ block.id }}">{{ block.body }}</div>
 </article>
 {% endfor %}

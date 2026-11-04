@@ -69,13 +69,32 @@
     }, COPY_MARK_TIMEOUT);
   }
 
+  // Текст заготовки: на странице просмотра он лежит в #block-body-<id>,
+  // у карточек сетки — только в JSON-атрибуте data-block той же карточки
+  // (второй экземпляр текста в разметку не выводится).
+  function blockBodyText(blockId) {
+    var source = document.getElementById("block-body-" + blockId);
+    if (source) {
+      return source.textContent;
+    }
+    var card = document.querySelector('[data-block-id="' + blockId + '"]');
+    if (!card) {
+      return null;
+    }
+    try {
+      return JSON.parse(card.getAttribute("data-block") || "{}").body || "";
+    } catch (error) {
+      return null;
+    }
+  }
+
   // Копирует текст заготовки по её идентификатору
   function copyToClipboard(blockId, button) {
-    var source = document.getElementById("block-body-" + blockId);
-    if (!source) {
+    var text = blockBodyText(blockId);
+    if (text === null) {
       return;
     }
-    writeText(source.textContent.trim()).then(
+    writeText(text.trim()).then(
       function () {
         markCopied(button);
       },

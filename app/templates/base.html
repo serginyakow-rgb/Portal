@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Нотариальная контора{% endblock %}</title>
+  <title>Нотариальная контора</title>
+  {# Значок вкладки — лого из шапки: app/static/img/favicon.png (64×64 из logo.jpg);
+     ?v=1 сбрасывает кэш значка в браузере #}
+  <link rel="icon" type="image/png" href="{{ url_for('static', path='img/favicon.png') }}?v=1">
   {# ?v= — версия статики: новый URL заставляет браузер забрать свежие стили #}
   <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=21">
 </head>

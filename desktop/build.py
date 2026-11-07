@@ -16,7 +16,7 @@
 
 Ключи:
 
-* ``--version 1.1.0`` — версия установщика (по умолчанию ``1.1.0``);
+* ``--version 1.2.0`` — версия установщика (по умолчанию ``1.2.0``);
 * ``--skip-exe`` — не пересобирать Portal.exe, взять готовый из ``dist``;
 * ``--skip-installer`` — остановиться на папке ``dist/Portal``;
 * ``--install-inno`` — скачать и тихо установить Inno Setup, если его нет.
@@ -180,7 +180,7 @@ def build_installer(version: str) -> Path:
 def main(argv: list[str] | None = None) -> int:
     """Выполняет шаги сборки по порядку и печатает путь к готовому установщику."""
     parser = argparse.ArgumentParser(description="Сборка установщика портала")
-    parser.add_argument("--version", default="1.1.0", help="версия установщика")
+    parser.add_argument("--version", default="1.2.0", help="версия установщика")
     parser.add_argument("--skip-exe", action="store_true", help="не пересобирать Portal.exe")
     parser.add_argument(
         "--skip-installer", action="store_true", help="только папка dist/Portal"

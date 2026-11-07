@@ -58,7 +58,7 @@ start.bat admin      :: создать администратора портал
 может запросить для Python доступ в брандмауэре — без него портал не откроется
 с других компьютеров конторы.
 
-## Установщик для Windows (`Portal-Setup-1.1.0.exe`)
+## Установщик для Windows (`Portal-Setup-1.2.0.exe`)
 
 Готовая сборка не требует Python и VS Code на компьютере конторы: приложение
 упаковано вместе с интерпретатором и библиотеками, а установщик ставит его
@@ -117,8 +117,8 @@ start.bat admin      :: создать администратора портал
 ### Сборка установщика
 
 ```powershell
-venv\Scripts\python.exe desktop\build.py                 # Portal-Setup-1.1.0.exe
-venv\Scripts\python.exe desktop\build.py --version 1.2.0 # новая версия
+venv\Scripts\python.exe desktop\build.py                 # Portal-Setup-1.2.0.exe
+venv\Scripts\python.exe desktop\build.py --version 1.3.0 # другая версия
 venv\Scripts\python.exe desktop\build.py --install-inno   # доставить Inno Setup
 venv\Scripts\python.exe desktop\build.py --skip-installer # только папка dist\Portal
 ```

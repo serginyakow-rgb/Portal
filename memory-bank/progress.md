@@ -1836,6 +1836,39 @@
    +166/−7) — отправлены в `origin/main`, `git status -sb` →
    `## main...origin/main`.
 
+70. Настольная сборка 1.2.0 (07.11.2026): просьба пользователя — выпустить
+   версию 1.2.0 (в 1.1.0 не вошли правки 05–07.11). Версия поднята
+   в `desktop/build.py` (docstring `--version 1.2.0` и `argparse` по
+   умолчанию) и `desktop/portal.iss` (запасное `#define AppVersion "1.2.0"`),
+   в `README.md` — заголовок «Установщик для Windows
+   (`Portal-Setup-1.2.0.exe`)» и пример сборки (следующая версия в примере —
+   `1.3.0`). В 1.2.0 вошли работы 05–07.11: `70069b1` (единый заголовок
+   вкладки и `favicon.png`), `f958d2b` (корзина: просмотр карточки
+   и фильтры после удаления), `43fe4de` (резервное копирование: кнопка
+   «Открыть папку»).
+   Сборка: `desktop\build.py --skip-installer` → `desktop\dist\Portal`
+   (773 файла, 168,9 МБ, `Portal.exe` 13 474 999 байт), затем
+   `desktop\build.py --skip-exe` → `desktop\output\Portal-Setup-1.2.0.exe`
+   (34 933 640 байт, 33,3 МБ, ProductVersion `1.2.0`, `Successful compile
+   (25,391 sec)`, SHA-256
+   `f6ad6a32d879eb622cbdbffcbb814cf86ba12d967e8f8709e2f0bc06ee99e651`).
+   Пакеты настольной сборки и Inno Setup 6.7.4 стояли с выпуска 1.1.0 —
+   доустановка не понадобилась; `desktop/output/Portal-Setup-1.1.0.exe`
+   оставлен для отката.
+   Проверка собранного `Portal.exe` (`--no-browser --port 8097`, рабочий
+   каталог — `dist\Portal`): `/` → 303 на вход, `/auth/login` → 200,
+   в разметке `styles.css?v=21` и `/static/img/favicon.png`, в журнале
+   «Портал слушает http://127.0.0.1:8097». Тестовые `.env`, `portal.db`,
+   `portal-desktop.json`, `portal-desktop.log` и `backups\` удалены
+   из `dist\Portal` до сборки установщика — в него уходят только программа,
+   шаблоны, статика, `scripts\create_admin.py` и значки.
+   Установку 1.2.0 поверх 1.1.0 (`%LOCALAPPDATA%\Programs\NotaryPortal`,
+   рабочая база и копии) выполняет пользователь: `CloseApplications=yes`
+   закроет запущенный `Portal.exe`, `app\` и `_internal\` заменятся, данные
+   останутся.
+   Документация: `README.md`, `PROJECT_MAP.md` (§10), `activeContext.md`,
+   этот файл.
+
 ## Как продолжать работу
 
 1. Прочитать `clinerules/01-carcass.md` и `clinerules/02-calculators.md`.

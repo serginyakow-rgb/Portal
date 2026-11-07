@@ -1515,7 +1515,10 @@ desktop/build.py               сборка одной командой (pip -> 
 `app/templates`, `app/static`, `scripts/create_admin.py`, `portal.ico`) →
 `output/Portal-Setup-<версия>.exe`. Шаблоны и статика кладутся рядом с exe
 намеренно: `app/main.py` монтирует их относительными путями от рабочего
-каталога, а не от `_internal`.
+каталога, а не от `_internal`. Версию задаёт `desktop/build.py` (`--version`,
+по умолчанию `1.2.0`) ключом `/DAppVersion`, запасное значение —
+`#define AppVersion` в `portal.iss`; выпуск 1.2.0 (07.11.2026): 773 файла,
+`Portal.exe` 13 474 999 байт, установщик 34 933 640 байт.
 
 Особенности, которые нельзя ломать при правках:
 

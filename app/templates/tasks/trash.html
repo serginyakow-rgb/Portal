@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon_trash, icon_undo, status_done, status_warn %}
 
-{% block title %}Корзина · Нотариальная контора{% endblock %}
-
 {% block content %}
 {# Корзина вынесена с доски на отдельную страницу: ссылка на неё стоит рядом
    со «Сбросом» в шапке доски. Возврат ставит карточку в конец её прежнего
-   столбца, окончательное удаление доступно только здесь. #}
+   столбца, окончательное удаление доступно только здесь.
+   Щелчок по карточке открывает окно «Просмотр карточки» (внизу страницы):
+   те же поля, что в окне «Редактирование карточки», но только для чтения.
+   Быстрые кнопки возврата и удаления в самой карточке остаются. #}
 <section class="panel">
   <div class="panel__head">
     <h1 class="panel__title">Корзина</h1>
@@ -21,7 +22,30 @@
   {% if trash %}
   <div class="cards">
     {% for task in trash %}
-    <article class="card card--task">
+    {# Значения полей окна «Просмотр карточки»: тот же приём, что у карточек
+       доски (_board.html) — окно одно на всю страницу, js/tasks.js разбирает
+       JSON из data-task и заполняет им поля. Адреса кнопок окна приходят
+       из data-task-restore и data-task-purge. #}
+    {% set view_payload = {
+         "title": task.title,
+         "contact": task.contact or "",
+         "due_date": task.due_date.isoformat() if task.due_date else "",
+         "description": task.description or "",
+         "assignee_id": task.assignee_id,
+         "card_type": task.card_type,
+         "checklist": task.checklist,
+         "deleted_at": task.deleted_at.strftime("%d.%m.%Y %H:%M") if task.deleted_at else ""
+       } %}
+    {# Щелчок по карточке открывает окно «Просмотр карточки»: удалённую
+       карточку можно только посмотреть, вернуть на доску или удалить
+       навсегда. role/tabindex нужны, чтобы карточку можно было открыть
+       с клавиатуры (Enter или пробел), aria-haspopup — что откроется окно. #}
+    <article class="card card--task" data-task-view
+             data-task="{{ view_payload|tojson|forceescape }}"
+             data-task-restore="/tasks/restore/{{ task.id }}"
+             data-task-purge="/tasks/purge/{{ task.id }}"
+             role="button" tabindex="0" aria-haspopup="dialog"
+             title="Открыть просмотр карточки">
       <div class="card__title">{{ task.title }}</div>
       {# Та же строка, что на доске: исполнитель, черта, дата удаления.
          Контакт в карточке корзины тоже не показывается #}
@@ -52,8 +76,52 @@
   <p class="panel__hint">Корзина пуста.</p>
   {% endif %}
 </section>
+
+{# Окно «Просмотр карточки» — открывается щелчком по карточке корзины (или
+   Enter/пробел на ней). Собрано из тех же частей полей, что окно
+   «Редактирование карточки» на доске (_form_fields_main.html и
+   _form_fields_extra.html): тип задачи, заголовок, контакт, срок, исполнитель,
+   описание и чек-лист. Значения кладёт js/tasks.js из data-task карточки,
+   он же отключает поля (disabled) — окно только для просмотра, сохранять
+   из него нечего.
+   Кнопки: «Восстановить» отправляет форму в /tasks/restore/{id},
+   «Удалить карточку навсегда» — в /tasks/purge/{id} (formaction) и спрашивает
+   подтверждение (data-confirm читает js/tasks.js), «Отмена» закрывает окно.
+   Адрес возврата форма получает от нажатой карточки (data-task-restore),
+   адрес удаления — кнопка удаления (data-task-purge). Окно одно на всю
+   страницу, поэтому action и formaction в разметке пустые.
+   Подпись под заголовком показывает, когда карточка удалена (data-task-view-deleted).
+   Блок Google Календаря (gcal_enabled=false) и кнопка справочника «Контакты»
+   (contacts_picker=false) в просмотре не нужны. #}
+<dialog class="modal modal--task modal--view" id="task-view-modal" aria-labelledby="task-view-title">
+  <form class="calc__form" method="post" action="">
+    <div class="panel__head">
+      <h2 class="panel__title" id="task-view-title">Просмотр карточки</h2>
+      <span class="panel__hint" data-task-view-deleted></span>
+    </div>
+
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={}, field_prefix="view-", gcal_enabled=false, contacts_picker=false %}
+      {% include "tasks/_form_fields_main.html" %}
+      {% endwith %}
+
+      <div class="calc__row">
+        <button class="btn btn--primary" type="submit" data-task-view-restore>Восстановить</button>
+        <button class="btn btn--ghost btn--danger" type="submit"
+                data-task-view-purge data-confirm>Удалить карточку навсегда</button>
+        <button class="btn btn--ghost" type="button" data-modal-close>Отмена</button>
+      </div>
+    </div>
+
+    <div class="modal__column">
+      {% with card_type=default_card_type, checklist={}, field_prefix="view-" %}
+      {% include "tasks/_form_fields_extra.html" %}
+      {% endwith %}
+    </div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=18"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=19"></script>
 {% endblock %}

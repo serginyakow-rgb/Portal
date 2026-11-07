@@ -39,7 +39,7 @@
                data-task-due="{{ task.due_date.isoformat() if task.due_date else '' }}"
                data-task-edit
                data-task-form="/tasks/update/{{ task.id }}?{{ board_filters }}"
-               data-task-delete-url="/tasks/delete/{{ task.id }}"
+               data-task-delete-url="/tasks/delete/{{ task.id }}?{{ board_filters }}"
                data-task="{{ edit_payload|tojson|forceescape }}"
                role="button" tabindex="0" aria-haspopup="dialog">
         <div class="card__title">{{ task.title }}</div>

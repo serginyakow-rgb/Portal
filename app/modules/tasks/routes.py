@@ -243,7 +243,16 @@ async def _render_trash(
     error: str | None = None,
     status_code: int = status.HTTP_200_OK,
 ) -> HTMLResponse:
-    """Рендерит страницу корзины: удалённые карточки, возврат и удаление."""
+    """Рендерит страницу корзины: удалённые карточки, возврат и удаление.
+
+    Кроме самих карточек страница несёт окно «Просмотр карточки»: оно собрано
+    из тех же частей полей, что окно правки (_form_fields_main.html и
+    _form_fields_extra.html), поэтому в контекст идут сотрудники и шаблоны
+    карточек («Настройки» → «Шаблоны карточек для раздела «Задачи»») — так же,
+    как у доски (_render_board). Значения полей кладёт js/tasks.js из data-task
+    карточки, а поля он же отключает: окно только для просмотра.
+    """
+    card_types, checklists, default_card_type = await _card_type_options(db)
     return render(
         request,
         "tasks/trash.html",
@@ -251,6 +260,10 @@ async def _render_trash(
         active_menu=MENU_TASKS,
         trash=await list_trash(db),
         trash_count=await count_trash(db),
+        users=await list_users(db),
+        card_types=card_types,
+        checklists=checklists,
+        default_card_type=default_card_type,
         restored=restored,
         purged=purged,
         error=error,
@@ -845,8 +858,17 @@ async def task_delete(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: CurrentUser,
     task_id: int,
+    assignee: str | None = None,
+    q: str = "",
 ) -> HTMLResponse | RedirectResponse:
-    """Убирает карточку в корзину: восстановить можно со страницы корзины."""
+    """Убирает карточку в корзину: восстановить можно со страницы корзины.
+
+    Фильтры доски (`?assignee=&q=`) приходят из адреса удаления: их несут
+    data-task-delete-url карточки и formaction кнопки «Удалить карточку»
+    (board_filters). Поэтому после удаления доска открывается с прежними
+    «Исполнителем» и «Поиском»: index_page при `?deleted=` фильтр
+    не подставляет. Без фильтров в адресе возврат прежний — /tasks/?deleted=1.
+    """
     task = await get_task(db, task_id)
     if task is None:
         return await _render_board(
@@ -858,7 +880,10 @@ async def task_delete(
         )
     if task.deleted_at is None:
         await archive_task(db, task)
-    return RedirectResponse("/tasks/?deleted=1", status_code=status.HTTP_303_SEE_OTHER)
+    address = "/tasks/?deleted=1"
+    if assignee is not None:
+        address = f"/tasks/?{_board_filters(_filter_assignee(assignee), q)}&deleted=1"
+    return RedirectResponse(address, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/restore/{task_id}", response_class=HTMLResponse, response_model=None)

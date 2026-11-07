@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 {% from "_macros.html" import status_warn %}
 
-{% block title %}{% if task %}Правка карточки{% else %}Новая карточка{% endif %} · Нотариальная контора{% endblock %}
-
 {% block content %}
 <section class="panel panel--task-form">
   <div class="panel__head">
@@ -46,7 +44,7 @@
        data-confirm читает js/tasks.js и спрашивает подтверждение. #}
     <div class="calc__row">
       <button class="btn btn--ghost btn--danger" type="submit"
-              formaction="/tasks/delete/{{ task.id }}" formnovalidate
+              formaction="/tasks/delete/{{ task.id }}{% if board_filters %}?{{ board_filters }}{% endif %}" formnovalidate
               data-confirm="Убрать карточку «{{ task.title }}» в корзину?">Удалить карточку</button>
     </div>
     {% endif %}
@@ -55,5 +53,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', path='js/tasks.js') }}?v=18"></script>
+<script src="{{ url_for('static', path='js/tasks.js') }}?v=19"></script>
 {% endblock %}

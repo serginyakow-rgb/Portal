@@ -1245,6 +1245,26 @@ dialog:not([open]) { display: none; }
    карточку»), в базе заготовок — четыре (ещё копирование) */
 .modal--task .modal__column > .calc__row { flex-wrap: wrap; }
 
+/* Окно «Просмотр карточки» корзины (Задачи → Корзина): поля те же, что у окна
+   правки, но только для чтения — js/tasks.js отключает их (disabled).
+   Браузерную серую заливку disabled заменяем спокойным фоном: значение
+   остаётся читаемым, но сразу видно, что менять его нельзя. Подписи полей
+   и пункты чек-листа в просмотре не «кликаются» — курсор обычный. */
+.modal--view .field input:disabled,
+.modal--view .field select:disabled,
+.modal--view .field textarea:disabled {
+  background: var(--bg);
+  border-color: var(--divider);
+  color: var(--text);
+  opacity: 1;
+  -webkit-text-fill-color: var(--text);  /* Safari: без этого текст бледнеет */
+  cursor: default;
+}
+.modal--view .field .checklist__item,
+.modal--view .field .checklist__item input[type="checkbox"]:disabled {
+  cursor: default;
+}
+
 /* Окно правки карточки «Базы данных»: ряд кнопок стоит на нижней границе
    окна — на одной линии с нижним краем поля «Текст карточки». Для этого
    левая колонка тянется на всю высоту окна, а ряд кнопок прижимается

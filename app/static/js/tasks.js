@@ -712,6 +712,91 @@
     return true;
   }
 
+  // Окно «Просмотр карточки» корзины: поля те же, что у окна правки (общие
+  // части _form_fields_main.html и _form_fields_extra.html), поэтому значения
+  // раскладываются теми же помощниками. Отличие одно — окно только для
+  // просмотра: после заполнения все поля отключаются (disabled), сохранять
+  // из него нечего. Кнопки окна отправляют форму в /tasks/restore/{id}
+  // и /tasks/purge/{id}: адреса приходят от нажатой карточки
+  // (data-task-restore и data-task-purge)
+  function fillViewDialog(dialog, opener) {
+    var payload;
+    try {
+      payload = JSON.parse(opener.getAttribute("data-task") || "");
+    } catch (error) {
+      return false;
+    }
+    if (!payload || typeof payload !== "object") {
+      return false;
+    }
+
+    var form = dialog.querySelector("form");
+    if (form) {
+      form.setAttribute("action", opener.getAttribute("data-task-restore") || "");
+    }
+    // «Удалить карточку навсегда» — кнопка с formaction: обработчик submit
+    // подменяет адрес формы после подтверждения, как у страницы правки
+    var purgeButton = dialog.querySelector("[data-task-view-purge]");
+    if (purgeButton) {
+      purgeButton.setAttribute("formaction", opener.getAttribute("data-task-purge") || "");
+      purgeButton.setAttribute(
+        "data-confirm",
+        payload.title
+          ? "Удалить карточку «" + payload.title + "» навсегда?"
+          : "Удалить карточку навсегда?"
+      );
+    }
+
+    var fields = updateFields(dialog);
+    setSelect(fields.cardType, payload.card_type || "");
+    if (fields.title) {
+      fields.title.value = payload.title || "";
+    }
+    if (fields.contact) {
+      fields.contact.value = payload.contact || "";
+    }
+    if (fields.dueDate) {
+      fields.dueDate.value = payload.due_date || "";
+    }
+    if (fields.description) {
+      fields.description.value = payload.description || "";
+    }
+    if (fields.assignee) {
+      fields.assignee.value = payload.assignee_id ? String(payload.assignee_id) : "";
+    }
+    // Чек-лист перерисовывается под тип карточки: отметки приходят из JSON
+    if (fields.checklist) {
+      var sets = checklistSets(fields.checklist);
+      renderChecklist(fields.checklist, sets[payload.card_type] || [], payload.checklist || {});
+    }
+    // Когда карточка удалена — подпись рядом с заголовком окна
+    var deletedHint = dialog.querySelector("[data-task-view-deleted]");
+    if (deletedHint) {
+      deletedHint.textContent = payload.deleted_at ? "Удалена: " + payload.deleted_at : "";
+    }
+
+    // Только просмотр: поля отключаются целиком, их вид задаёт styles.css
+    // (.modal--view …:disabled). Кнопки окна остаются рабочими
+    toArray(dialog.querySelectorAll("input, select, textarea")).forEach(function (field) {
+      field.disabled = true;
+    });
+    return true;
+  }
+
+  // Открывает окно просмотра и ставит фокус на первую кнопку: все поля в нём
+  // отключены, поэтому openModal() фокус в поле поставить не может
+  function openViewDialog(card) {
+    var dialog = document.getElementById("task-view-modal");
+    if (!dialog || !fillViewDialog(dialog, card) || !openModal(dialog)) {
+      return false;
+    }
+    var firstButton = dialog.querySelector("[data-task-view-restore]");
+    if (firstButton) {
+      firstButton.focus();
+    }
+    return true;
+  }
+
   document.addEventListener("click", function (event) {
     // Кнопка «Новая карточка» — ссылка на /tasks/create, скрипт её перехватывает
     var opener = closestElement(event.target, "[data-modal-open]");
@@ -765,6 +850,20 @@
       return;
     }
 
+    // Щелчок по карточке корзины открывает окно «Просмотр карточки».
+    // Кнопки возврата и удаления внутри карточки работают сами по себе:
+    // щелчок по форме, кнопке или ссылке окно не открывает
+    var viewOpener = closestElement(event.target, "[data-task-view]");
+    if (viewOpener) {
+      if (closestElement(event.target, "button, a, form")) {
+        return;
+      }
+      if (openViewDialog(viewOpener)) {
+        event.preventDefault();
+      }
+      return;
+    }
+
     // Щелчок по карточке открывает окно «Редактирование карточки», а не
     // страницу /tasks/update/{id}: окно одно на всю доску, значения берутся
     // у самой карточки (data-task)
@@ -797,18 +896,27 @@
     }
   });
 
-  // Карточку на доске можно открыть и с клавиатуры: Enter или пробел на
-  // карточке (role="button" tabindex="0" в tasks/index.html)
+  // Карточку можно открыть и с клавиатуры: Enter или пробел на карточке
+  // (role="button" tabindex="0"). На доске это окно «Редактирование карточки»
+  // (tasks/index.html), в корзине — окно «Просмотр карточки» (tasks/trash.html)
   document.addEventListener("keydown", function (event) {
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }
-    var card = closestElement(event.target, "[data-task-edit]");
-    if (!card) {
+    // Enter на кнопке внутри карточки — обычное нажатие кнопки, окно не нужно
+    if (closestElement(event.target, "button, a")) {
       return;
     }
-    var dialog = document.getElementById("task-edit-modal");
-    if (dialog && fillEditDialog(dialog, card) && openModal(dialog)) {
+    var card = closestElement(event.target, "[data-task-edit]");
+    if (card) {
+      var dialog = document.getElementById("task-edit-modal");
+      if (dialog && fillEditDialog(dialog, card) && openModal(dialog)) {
+        event.preventDefault();
+      }
+      return;
+    }
+    var trashCard = closestElement(event.target, "[data-task-view]");
+    if (trashCard && openViewDialog(trashCard)) {
       event.preventDefault();
     }
   });

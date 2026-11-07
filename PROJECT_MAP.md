@@ -930,10 +930,11 @@ Escape и клик по подложке.
 
 | Метод | Путь | Обработчик | Шаблон / результат |
 | --- | --- | --- | --- |
-| GET | `/settings/backup` | `settings_backup_page` | `settings/index.html` + `_backup_panel.html`; флаги `?created=`, `?restored=`, `?saved=`, `?warn=`, `?error=` |
+| GET | `/settings/backup` | `settings_backup_page` | `settings/index.html` + `_backup_panel.html`; флаги `?created=`, `?restored=`, `?saved=`, `?warn=`, `?opened=`, `?open_failed=`, `?error=` |
 | GET | `/settings/backup/files` | `settings_backup_files` | `JSONResponse`: `files[]` с `name`, `size`, `size_label`, `created` |
 | GET | `/settings/backup/download/{name}` | `settings_backup_download` | файл копии как вложение (`Content-Disposition: attachment`); плохое имя — `400` |
 | POST | `/settings/backup/create` | `settings_backup_create` | `build_backup` + `save_to_disk`, `303` на `?created=<имя>`; чекбоксы `include_plain_passwords`, `include_google_credentials` |
+| POST | `/settings/backup/open-folder` | `settings_backup_open_folder` | открывает `BACKUP_DIR` в проводнике компьютера портала (`os.startfile`), `303` на `?opened=1`; не Windows или сбой — `303` на `?open_failed=1` |
 | POST | `/settings/backup/restore` | `settings_backup_restore` | поле `file` (multipart) или `name` (файл из папки), режим `mode=replace`: автобэкап → проверка → замена, `303` на `?restored=<имя>&saved=<автобэкап>` (+`&warn=<n>`); ошибка — `400` с текстом, БД не меняется |
 
 ## 6. Связка «шаблон → JavaScript»
@@ -1380,6 +1381,11 @@ middleware tasks_menu_badge (GET, кроме /static) → request.state.tasks_ba
        сбой только в warnings
     → 303 ?restored=<имя>&saved=<автобэкап> (+&warn=<n>): в сообщении просьба
       войти заново, если учётная запись была изменена
+
+  → «Открыть папку» (POST /settings/backup/open-folder, кнопка formaction)
+    → _open_folder: mkdir BACKUP_DIR → os.startfile: проводник на машине портала
+    → 303 ?opened=1 (сообщение) или ?open_failed=1 (предупреждение: открыть вручную)
+    → ничего не меняет: страница рисуется заново, копии не создаются
 
   → JS backup.js показывает своё окно подтверждения для форм с data-confirm
 ```

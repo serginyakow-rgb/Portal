@@ -46,6 +46,10 @@
 
     <div class="calc__row">
       <button class="btn btn--primary" type="submit">Создать и сохранить</button>
+      {# Открыть папку копий в проводнике просит сервер: файлы лежат на
+         компьютере портала, а не там, где браузер. Отдельная форма не нужна —
+         кнопка отправляет эту же форму (без чекбоксов) в formaction. #}
+      <button class="btn btn--ghost" type="submit" formaction="{{ backup_url }}/open-folder">Открыть папку</button>
       <span class="panel__hint">Папка: <code>{{ backup_dir_absolute }}</code></span>
     </div>
   </form>

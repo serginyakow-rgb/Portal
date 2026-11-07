@@ -8,8 +8,14 @@
 Создание копии и восстановление не пишут загруженный файл на диск:
 восстановление читает байты в память (предел — ``MAX_BACKUP_SIZE``),
 поэтому в папке ``backups/`` появляются только копии, собранные порталом.
+
+Папка копий живёт на компьютере портала, а не на компьютере пользователя,
+поэтому кнопка «Открыть папку» просит проводник открыть сервер — браузер
+этого сделать не может.
 """
 import logging
+import os
+import sys
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
@@ -17,6 +23,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.core.database import get_db
@@ -39,6 +46,21 @@ AdminUser = Annotated[User, Depends(require_role("admin"))]
 # Адрес раздела и значение settings_section для меню настроек
 BACKUP_URL = "/settings/backup"
 SETTINGS_BACKUP = "backup"
+
+
+def _open_folder(directory: Path) -> None:
+    """Открывает папку резервных копий в проводнике компьютера портала.
+
+    Копии лежат на машине портала, а не на компьютере пользователя: браузер
+    чужой проводник открыть не может, поэтому папку открывает сам сервер —
+    тем же способом, что пункт «Открыть папку с данными» в трее
+    (``desktop/launcher.py``). Папку создаём на месте: после переноса портала
+    она может быть ещё не создана, а открывать пустоту незачем.
+    """
+    if sys.platform != "win32":
+        raise OSError("проводник открывается только на компьютере портала")
+    directory.mkdir(parents=True, exist_ok=True)
+    os.startfile(str(directory.resolve()))  # noqa: S606 — так открывается проводник
 
 
 async def _render_page(
@@ -91,6 +113,8 @@ def _page_messages(
     restored: str | None,
     saved: str | None,
     warn: int,
+    opened: bool = False,
+    open_failed: bool = False,
 ) -> tuple[str | None, str | None]:
     """Тексты сообщений по флагам в адресе: что сделали и о чём предупредить."""
     message: str | None = None
@@ -105,14 +129,22 @@ def _page_messages(
             f"Данные восстановлены из копии: {restored}.{saved_note} "
             "Войдите заново, если ваша учётная запись была изменена."
         )
-    warn_message = (
-        (
+    elif opened:
+        message = (
+            "Папка резервных копий открыта в проводнике на компьютере портала."
+        )
+    if open_failed:
+        warn_message: str | None = (
+            "Не удалось открыть папку в проводнике — откройте её вручную "
+            "по пути из блока «Резервное копирование»."
+        )
+    elif warn:
+        warn_message = (
             f"Восстановление выполнено с предупреждениями ({warn}). "
             "Подробности — в журнале сервера."
         )
-        if warn
-        else None
-    )
+    else:
+        warn_message = None
     return message, warn_message
 
 
@@ -124,11 +156,18 @@ async def settings_backup_page(
     restored: str | None = None,
     saved: str | None = None,
     warn: int = 0,
+    opened: int = 0,
+    open_failed: int = 0,
     error: str | None = None,
 ) -> HTMLResponse:
     """Раздел «Резервное копирование»: создание копии, файлы в папке, восстановление."""
     message, warn_message = _page_messages(
-        created=created, restored=restored, saved=saved, warn=warn
+        created=created,
+        restored=restored,
+        saved=saved,
+        warn=warn,
+        opened=bool(opened),
+        open_failed=bool(open_failed),
     )
     return await _render_page(
         request,
@@ -214,6 +253,27 @@ async def settings_backup_create(
     return RedirectResponse(
         f"{BACKUP_URL}?created={quote(path.name)}",
         status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/settings/backup/open-folder", response_model=None)
+async def settings_backup_open_folder(user: AdminUser) -> RedirectResponse:
+    """Открывает папку резервных копий в проводнике компьютера портала.
+
+    Данные не меняются: кнопка только показывает нотариусу файлы копий.
+    Ответ — редирект (303): обновление страницы не откроет проводник повторно.
+    """
+    directory = Path(get_settings().BACKUP_DIR)
+    try:
+        await run_in_threadpool(_open_folder, directory)
+    except OSError as exc:
+        logger.warning("Не удалось открыть папку резервных копий: %s", exc)
+        return RedirectResponse(
+            f"{BACKUP_URL}?open_failed=1", status_code=status.HTTP_303_SEE_OTHER
+        )
+    logger.info("Папка резервных копий открыта в проводнике: %s", directory)
+    return RedirectResponse(
+        f"{BACKUP_URL}?opened=1", status_code=status.HTTP_303_SEE_OTHER
     )
 
 
